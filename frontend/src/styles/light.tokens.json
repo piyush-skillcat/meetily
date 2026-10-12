@@ -1,0 +1,74 @@
+{
+  "$description": "SkillCat — LIGHT theme (warm sand). Build as: core.tokens.json + this file. Same semantic keys as dark.tokens.json, light values. ink ramp is lightness-mirrored vs dark so text/surface aliases resolve correctly. References like {primary} resolve against core.",
+
+  "ink": {
+    "$type": "color",
+    "$description": "Warm taupe ramp. ink-100 = darkest text → ink-900 = lightest fill (mirrored vs dark).",
+    "100": { "$value": "#2B2722" },
+    "200": { "$value": "#403B33" },
+    "300": { "$value": "#797161" },
+    "400": { "$value": "#938A78" },
+    "500": { "$value": "#A99F8C" },
+    "600": { "$value": "#C4BBA8" },
+    "700": { "$value": "#DBD3C4" },
+    "800": { "$value": "#EAE3D7" },
+    "900": { "$value": "#F4EFE7" }
+  },
+
+  "surface": {
+    "$type": "color",
+    "0":      { "$value": "#ECE7DE", "$description": "App background / sand base." },
+    "1":      { "$value": "#F6F2EB", "$description": "Raised panel / container cream." },
+    "2":      { "$value": "#FFFFFF", "$description": "Cards — most elevated." },
+    "sunken": { "$value": "#E8E1D6", "$description": "Recessed wells (kanban columns)." },
+    "glass":  { "$value": "#FFFFFF99", "$description": "Approx of the frosted overlay; true recipe is a gradient — see DESIGN.md." }
+  },
+
+  "border": {
+    "$type": "color",
+    "hairline": { "$value": "#E4DCD0" },
+    "subtle":   { "$value": "#2B27221F" }
+  },
+
+  "text": {
+    "$type": "color",
+    "$description": "Semantic text roles (additive; alias the ink ramp).",
+    "strong":    { "$value": "{ink.100}" },
+    "body":      { "$value": "{ink.200}" },
+    "muted":     { "$value": "{ink.300}" },
+    "disabled":  { "$value": "{ink.500}" },
+    "on-accent": { "$value": "{white}" }
+  },
+
+  "success":    { "$type": "color", "$value": "#1E8A56" },
+  "info":       { "$type": "color", "$value": "#356FAE" },
+  "warning":    { "$type": "color", "$value": "#C77D0E" },
+  "danger":     { "$type": "color", "$value": "#CE2E39" },
+  "accent":     { "$type": "color", "$value": "#7257C0" },
+  "success-bg": { "$type": "color", "$value": "#DDF0E5", "$description": "Solid pale tint (light mode), not alpha-on-dark." },
+  "info-bg":    { "$type": "color", "$value": "#DCE8F4" },
+  "warning-bg": { "$type": "color", "$value": "#FAEACB" },
+  "danger-bg":  { "$type": "color", "$value": "#FBE0E2" },
+  "accent-bg":  { "$type": "color", "$value": "#E8E1F7" },
+
+  "shadow": {
+    "$type": "shadow",
+    "sm": { "$value": [
+      { "color": "#3C30240F", "offsetX": { "value": 0, "unit": "px" }, "offsetY": { "value": 1, "unit": "px" }, "blur": { "value": 2, "unit": "px" }, "spread": { "value": 0, "unit": "px" } },
+      { "color": "#3C302412", "offsetX": { "value": 0, "unit": "px" }, "offsetY": { "value": 1, "unit": "px" }, "blur": { "value": 3, "unit": "px" }, "spread": { "value": 0, "unit": "px" } }
+    ] },
+    "md": { "$value": { "color": "#3C30241A", "offsetX": { "value": 0, "unit": "px" }, "offsetY": { "value": 4,  "unit": "px" }, "blur": { "value": 14, "unit": "px" }, "spread": { "value": 0, "unit": "px" } } },
+    "lg": { "$value": { "color": "#3C302424", "offsetX": { "value": 0, "unit": "px" }, "offsetY": { "value": 16, "unit": "px" }, "blur": { "value": 40, "unit": "px" }, "spread": { "value": 0, "unit": "px" } } }
+  },
+  "glow-primary": { "$type": "shadow", "$value": { "color": "#F0552338", "offsetX": { "value": 0, "unit": "px" }, "offsetY": { "value": 0, "unit": "px" }, "blur": { "value": 24, "unit": "px" }, "spread": { "value": 0, "unit": "px" } } },
+
+  "cta-shadow": {
+    "$type": "shadow",
+    "$description": "Signature CTA shadow (light). The matching radial fill is not a portable DTCG type — see DESIGN.md.",
+    "$value": [
+      { "color": "#E4451573", "offsetX": { "value": 0, "unit": "px" }, "offsetY": { "value": 0, "unit": "px" }, "blur": { "value": 0,  "unit": "px" }, "spread": { "value": 1, "unit": "px" } },
+      { "color": "#8A311480", "inset": true, "offsetX": { "value": 0, "unit": "px" }, "offsetY": { "value": 0, "unit": "px" }, "blur": { "value": 16, "unit": "px" }, "spread": { "value": 0, "unit": "px" } },
+      { "color": "#F0552338", "offsetX": { "value": 0, "unit": "px" }, "offsetY": { "value": 4, "unit": "px" }, "blur": { "value": 12, "unit": "px" }, "spread": { "value": 0, "unit": "px" } }
+    ]
+  }
+}

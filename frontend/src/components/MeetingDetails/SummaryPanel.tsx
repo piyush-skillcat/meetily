@@ -1,16 +1,20 @@
 "use client";
 
 import { Summary, SummaryResponse, Transcript } from '@/types';
-import { EditableTitle } from '@/components/EditableTitle';
 import { BlockNoteSummaryView, BlockNoteSummaryViewRef } from '@/components/AISummary/BlockNoteSummaryView';
 import { EmptyStateSummary } from '@/components/EmptyStateSummary';
 import { ModelConfig } from '@/components/ModelSettingsModal';
 import { SummaryGeneratorButtonGroup } from './SummaryGeneratorButtonGroup';
 import { SummaryUpdaterButtonGroup } from './SummaryUpdaterButtonGroup';
+import dynamic from 'next/dynamic';
+const NotesPad = dynamic(() => import('@/components/Notes/NotesPad').then(m => m.NotesPad), { ssr: false });
+const AskPanelLazy = dynamic(() => import('./AskPanel').then(m => m.AskPanel), { ssr: false });
 import Analytics from '@/lib/analytics';
 import { useEffect, useRef, useState, RefObject } from 'react';
 import { toast } from 'sonner';
-import { Languages, ChevronDown } from 'lucide-react';
+import { Languages, ChevronDown, Sparkles, PenLine, MessageSquare, Loader2 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { LanguagePickerPopover } from '@/components/LanguagePickerPopover';
@@ -21,6 +25,8 @@ import {
   saveMeetingSummaryLanguage,
   SummaryLanguageStorage,
 } from '@/lib/summary-language-preferences';
+
+export type SummaryTab = 'enhanced' | 'notes' | 'ask';
 
 interface SummaryPanelProps {
   meeting: {
@@ -58,18 +64,28 @@ interface SummaryPanelProps {
   availableTemplates: Array<{ id: string, name: string, description: string }>;
   selectedTemplate: string;
   onTemplateSelect: (templateId: string, templateName: string) => void;
+  onRefreshTemplates?: () => void;
   isModelConfigLoading?: boolean;
   onOpenModelSettings?: (openFn: () => void) => void;
+
+  // Granola-style additions
+  /** Text streamed from the model while enhancing (shown live) */
+  streamText?: string;
+  /** The user's own notes (markdown) */
+  notesMarkdown: string;
+  notesJson?: string | null;
+  notesLoading?: boolean;
+  onNotesChange: (markdown: string, json: string) => void;
+  /** Controlled active tab */
+  activeTab: SummaryTab;
+  onTabChange: (tab: SummaryTab) => void;
+  /** Who said what; passed through to AskPanel via provider/model */
+  totalTranscriptCount?: number;
 }
 
 export function SummaryPanel({
   meeting,
   meetingTitle,
-  onTitleChange,
-  isEditingTitle,
-  onStartEditTitle,
-  onFinishEditTitle,
-  isTitleDirty,
   summaryRef,
   isSaving,
   onSaveAll,
@@ -84,7 +100,6 @@ export function SummaryPanel({
   onGenerateSummary,
   onStopGeneration,
   customPrompt,
-  summaryResponse,
   onSaveSummary,
   onSummaryChange,
   onDirtyChange,
@@ -94,8 +109,18 @@ export function SummaryPanel({
   availableTemplates,
   selectedTemplate,
   onTemplateSelect,
+  onRefreshTemplates,
   isModelConfigLoading = false,
-  onOpenModelSettings
+  onOpenModelSettings,
+  isTitleDirty,
+  streamText = '',
+  notesMarkdown,
+  notesJson,
+  notesLoading = false,
+  onNotesChange,
+  activeTab,
+  onTabChange,
+  totalTranscriptCount,
 }: SummaryPanelProps) {
   const [summaryLang, setSummaryLang] = useState<string | null>(null);
   const [summaryLangStorage, setSummaryLangStorage] = useState<SummaryLanguageStorage>('metadata');
@@ -115,6 +140,7 @@ export function SummaryPanel({
   } | null>(null);
   activeMeetingIdRef.current = meeting.id;
   const { addRecent } = useRecentLanguages();
+  const streamScrollRef = useRef<HTMLDivElement>(null);
 
   const effectiveLangLabel = summaryLang ? labelForCode(summaryLang) : 'Auto';
   const isLocalFallbackLanguage = summaryLangStorage === 'local_fallback';
@@ -136,9 +162,6 @@ export function SummaryPanel({
         }
       } catch (err) {
         console.error('Failed to load summary language:', err);
-        toast.warning('Could not load saved summary language', {
-          description: 'Using Auto until meeting metadata can be read.',
-        });
         if (!cancelled && languageLoadVersionRef.current === loadVersion) setSummaryLang(null);
       }
     };
@@ -149,6 +172,12 @@ export function SummaryPanel({
       cancelled = true;
     };
   }, [meeting.id]);
+
+  // Keep the streaming preview pinned to the bottom
+  useEffect(() => {
+    const el = streamScrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [streamText]);
 
   const persistLatestLanguageSelection = async () => {
     if (languageSaveLoopRunningRef.current) return;
@@ -168,11 +197,6 @@ export function SummaryPanel({
           ) {
             setSummaryLang(saved.language);
             setSummaryLangStorage(saved.storage);
-            if (saved.storage === 'local_fallback') {
-              toast.info('Summary language saved on this device', {
-                description: 'This meeting has no recording folder, so the preference cannot be written to meeting metadata.',
-              });
-            }
             if (request.language) {
               addRecent(request.language);
             }
@@ -193,7 +217,6 @@ export function SummaryPanel({
             return;
           }
 
-          console.warn('Ignoring failed stale summary language save:', err);
           if (latest?.version === request.version) return;
         }
       }
@@ -205,24 +228,25 @@ export function SummaryPanel({
   const handleLangChange = (code: string | null) => {
     const previous = summaryLang;
     const previousStorage = summaryLangStorage;
-    const nextStored = code;
     languageLoadVersionRef.current += 1;
     latestLanguageSaveRequestRef.current = {
       version: languageSaveVersionRef.current + 1,
       meetingId: meeting.id,
-      language: nextStored,
+      language: code,
       rollback: {
         language: previous,
         storage: previousStorage,
       },
     };
     languageSaveVersionRef.current += 1;
-    setSummaryLang(nextStored);
+    setSummaryLang(code);
     setLangPickerOpen(false);
     void persistLatestLanguageSelection();
   };
 
   const isSummaryLoading = summaryStatus === 'processing' || summaryStatus === 'summarizing' || summaryStatus === 'regenerating';
+  const hasNotes = notesMarkdown.trim().length > 0;
+  const hasTranscripts = (totalTranscriptCount ?? transcripts.length) > 0;
 
   const languageSlot = (
     <Popover open={langPickerOpen} onOpenChange={setLangPickerOpen}>
@@ -230,8 +254,8 @@ export function SummaryPanel({
         <Button
           variant="outline"
           size="sm"
-          title={`Summary language: ${effectiveLangLabel}${isLocalFallbackLanguage ? ' (saved on this device)' : ''}`}
-          aria-label="Set summary language"
+          title={`Notes language: ${effectiveLangLabel}${isLocalFallbackLanguage ? ' (saved on this device)' : ''}`}
+          aria-label="Set notes language"
         >
           <Languages size={18} />
           <span className="hidden lg:inline">{effectiveLangLabel}</span>
@@ -252,165 +276,131 @@ export function SummaryPanel({
     </Popover>
   );
 
+  const generatorGroup = (
+    <SummaryGeneratorButtonGroup
+      modelConfig={modelConfig}
+      setModelConfig={setModelConfig}
+      onSaveModelConfig={onSaveModelConfig}
+      onGenerateSummary={onGenerateSummary}
+      onStopGeneration={onStopGeneration}
+      customPrompt={customPrompt}
+      summaryStatus={summaryStatus}
+      availableTemplates={availableTemplates}
+      selectedTemplate={selectedTemplate}
+      onTemplateSelect={onTemplateSelect}
+      onRefreshTemplates={onRefreshTemplates}
+      hasTranscripts={hasTranscripts}
+      hasSummary={!!aiSummary}
+      hasNotes={hasNotes}
+      isModelConfigLoading={isModelConfigLoading}
+      onOpenModelSettings={onOpenModelSettings}
+      languageSlot={hasTranscripts ? languageSlot : undefined}
+    />
+  );
+
+  const tabButton = (tab: SummaryTab, label: string, Icon: typeof Sparkles) => (
+    <button
+      onClick={() => onTabChange(tab)}
+      className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-colors ${
+        activeTab === tab ? 'bg-ink-strong text-surface-0' : 'text-ink-muted hover:bg-gray-100'
+      }`}
+    >
+      <Icon size={15} />
+      <span>{label}</span>
+    </button>
+  );
+
   return (
     <div className="flex-1 min-w-0 flex flex-col bg-white overflow-hidden">
-      {/* Title area */}
-      <div className="p-4 border-b border-gray-200">
-        {/* <EditableTitle
-          title={meetingTitle}
-          isEditing={isEditingTitle}
-          onStartEditing={onStartEditTitle}
-          onFinishEditing={onFinishEditTitle}
-          onChange={onTitleChange}
-        /> */}
-
-        {/* Button groups - only show when summary exists */}
-        {aiSummary && !isSummaryLoading && (
-          <div className="flex items-center justify-center w-full pt-0 gap-2">
-            {/* Left-aligned: Summary Generator Button Group */}
-            <div className="flex-shrink-0">
-              <SummaryGeneratorButtonGroup
-                modelConfig={modelConfig}
-                setModelConfig={setModelConfig}
-                onSaveModelConfig={onSaveModelConfig}
-                onGenerateSummary={onGenerateSummary}
-                onStopGeneration={onStopGeneration}
-                customPrompt={customPrompt}
-                summaryStatus={summaryStatus}
-                availableTemplates={availableTemplates}
-                selectedTemplate={selectedTemplate}
-                onTemplateSelect={onTemplateSelect}
-                hasTranscripts={transcripts.length > 0}
-                hasSummary={!!aiSummary}
-                isModelConfigLoading={isModelConfigLoading}
-                onOpenModelSettings={onOpenModelSettings}
-                languageSlot={languageSlot}
-              />
-            </div>
-
-            {/* Right-aligned: Summary Updater Button Group */}
-            <div className="flex-shrink-0">
+      {/* Header: tabs + actions */}
+      <div className="px-4 py-3 border-b border-gray-200 flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-lg p-1">
+          {tabButton('enhanced', 'Enhanced notes', Sparkles)}
+          {tabButton('notes', hasNotes ? 'My notes' : 'My notes', PenLine)}
+          {tabButton('ask', 'Ask', MessageSquare)}
+        </div>
+        <div className="flex-1" />
+        {activeTab === 'enhanced' && (
+          <div className="flex items-center gap-2">
+            {generatorGroup}
+            {aiSummary && !isSummaryLoading && (
               <SummaryUpdaterButtonGroup
                 isSaving={isSaving}
                 isDirty={isTitleDirty || (summaryRef.current?.isDirty || false)}
                 onSave={onSaveAll}
                 onCopy={onCopySummary}
-                onFind={() => {
-                  // TODO: Implement find in summary functionality
-                  console.log('Find in summary clicked');
-                }}
+                onFind={() => { }}
                 onOpenFolder={onOpenFolder}
                 hasSummary={!!aiSummary}
               />
-            </div>
+            )}
+          </div>
+        )}
+        {activeTab === 'notes' && (
+          <div className="flex items-center gap-2">
+            {generatorGroup}
           </div>
         )}
       </div>
 
-      {isSummaryLoading ? (
-        <div className="flex flex-col h-full">
-          {/* Show button group during generation */}
-          <div className="flex items-center justify-center pt-8 pb-4">
-            <SummaryGeneratorButtonGroup
-              modelConfig={modelConfig}
-              setModelConfig={setModelConfig}
-              onSaveModelConfig={onSaveModelConfig}
-              onGenerateSummary={onGenerateSummary}
-              onStopGeneration={onStopGeneration}
-              customPrompt={customPrompt}
-              summaryStatus={summaryStatus}
-              availableTemplates={availableTemplates}
-              selectedTemplate={selectedTemplate}
-              onTemplateSelect={onTemplateSelect}
-              hasTranscripts={transcripts.length > 0}
-              isModelConfigLoading={isModelConfigLoading}
-              onOpenModelSettings={onOpenModelSettings}
-            />
+      {/* Body */}
+      {activeTab === 'ask' ? (
+        <AskPanelLazy meetingId={meeting.id} />
+      ) : activeTab === 'notes' ? (
+        <div className="flex-1 overflow-y-auto min-h-0">
+          <div className="px-6 pt-4 pb-2 text-xs text-gray-500">
+            Your own notes. Hit <span className="font-medium text-gray-700">Enhance notes</span> to have the AI fill in details from the transcript. Your original notes stay here.
           </div>
-          {/* Loading spinner */}
-          <div className="flex items-center justify-center flex-1">
-            <div className="text-center">
-              <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4"></div>
-              <p className="text-gray-600">Generating AI Summary...</p>
+          {notesLoading ? (
+            <div className="px-6 text-sm text-gray-400">Loading…</div>
+          ) : (
+            <div className="px-2 pb-10">
+              <NotesPad
+                key={`${meeting.id}-notes`}
+                initialMarkdown={notesMarkdown}
+                initialJson={notesJson}
+                onChange={onNotesChange}
+              />
             </div>
+          )}
+        </div>
+      ) : isSummaryLoading ? (
+        <div className="flex flex-col flex-1 min-h-0">
+          <div className="flex items-center gap-2 px-6 py-2 text-sm text-gray-500 border-b border-gray-100">
+            <Loader2 size={14} className="animate-spin" />
+            <span>{streamText ? 'Writing your notes…' : getSummaryStatusMessage(summaryStatus) || 'Reading the transcript…'}</span>
+          </div>
+          <div ref={streamScrollRef} className="flex-1 overflow-y-auto px-8 py-4">
+            {streamText ? (
+              <div className="stream-md max-w-3xl">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamText}</ReactMarkdown>
+                <span className="inline-block w-1.5 h-4 bg-gray-400 animate-pulse align-middle ml-0.5" />
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                  <div className="inline-block animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500 mb-3"></div>
+                  <p className="text-gray-500 text-sm">Reading the transcript…</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       ) : !aiSummary ? (
         <div className="flex flex-col h-full">
-          {/* Centered Summary Generator Button Group when no summary */}
-          <div className="flex items-center justify-center gap-2 pt-8 pb-4">
-            <SummaryGeneratorButtonGroup
-              modelConfig={modelConfig}
-              setModelConfig={setModelConfig}
-              onSaveModelConfig={onSaveModelConfig}
-              onGenerateSummary={onGenerateSummary}
-              onStopGeneration={onStopGeneration}
-              customPrompt={customPrompt}
-              summaryStatus={summaryStatus}
-              availableTemplates={availableTemplates}
-              selectedTemplate={selectedTemplate}
-              onTemplateSelect={onTemplateSelect}
-              hasTranscripts={transcripts.length > 0}
-              hasSummary={false}
-              isModelConfigLoading={isModelConfigLoading}
-              onOpenModelSettings={onOpenModelSettings}
-              languageSlot={transcripts.length > 0 ? languageSlot : undefined}
-            />
-          </div>
-          {/* Empty state message */}
           <EmptyStateSummary
             onGenerate={() => onGenerateSummary(customPrompt)}
             hasModel={modelConfig.provider !== null && modelConfig.model !== null}
             isGenerating={isSummaryLoading}
           />
-        </div>
-      ) : transcripts?.length > 0 && (
-        <div className="flex-1 overflow-y-auto min-h-0">
-          {summaryResponse && (
-            <div className="fixed bottom-0 left-0 right-0 bg-white shadow-lg p-4 max-h-1/3 overflow-y-auto">
-              <h3 className="text-lg font-semibold mb-2">Meeting Summary</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-white p-4 rounded-lg shadow-sm">
-                  <h4 className="font-medium mb-1">Key Points</h4>
-                  <ul className="list-disc pl-4">
-                    {summaryResponse.summary.key_points.blocks.map((block, i) => (
-                      <li key={i} className="text-sm">{block.content}</li>
-                    ))}
-                  </ul>
-                </div>
-                <div className="bg-white p-4 rounded-lg shadow-sm mt-4">
-                  <h4 className="font-medium mb-1">Action Items</h4>
-                  <ul className="list-disc pl-4">
-                    {summaryResponse.summary.action_items.blocks.map((block, i) => (
-                      <li key={i} className="text-sm">{block.content}</li>
-                    ))}
-                  </ul>
-                </div>
-                <div className="bg-white p-4 rounded-lg shadow-sm mt-4">
-                  <h4 className="font-medium mb-1">Decisions</h4>
-                  <ul className="list-disc pl-4">
-                    {summaryResponse.summary.decisions.blocks.map((block, i) => (
-                      <li key={i} className="text-sm">{block.content}</li>
-                    ))}
-                  </ul>
-                </div>
-                <div className="bg-white p-4 rounded-lg shadow-sm mt-4">
-                  <h4 className="font-medium mb-1">Main Topics</h4>
-                  <ul className="list-disc pl-4">
-                    {summaryResponse.summary.main_topics.blocks.map((block, i) => (
-                      <li key={i} className="text-sm">{block.content}</li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-              {summaryResponse.raw_summary ? (
-                <div className="mt-4">
-                  <h4 className="font-medium mb-1">Full Summary</h4>
-                  <p className="text-sm whitespace-pre-wrap">{summaryResponse.raw_summary}</p>
-                </div>
-              ) : null}
-            </div>
+          {hasNotes && (
+            <p className="text-center text-xs text-gray-400 -mt-4">
+              You have notes for this meeting. Enhancing will keep them and add what you missed.
+            </p>
           )}
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto min-h-0">
           <div className="p-6 w-full">
             <BlockNoteSummaryView
               ref={summaryRef}
@@ -431,12 +421,9 @@ export function SummaryPanel({
               }}
             />
           </div>
-          {summaryStatus !== 'idle' && (
-            <div className={`mt-4 p-4 rounded-lg ${summaryStatus === 'error' ? 'bg-red-100 text-red-700' :
-              summaryStatus === 'completed' ? 'bg-green-100 text-green-700' :
-                'bg-blue-100 text-blue-700'
-              }`}>
-              <p className="text-sm font-medium">{getSummaryStatusMessage(summaryStatus)}</p>
+          {summaryStatus === 'error' && summaryError && (
+            <div className="mx-6 mb-6 p-4 rounded-lg bg-red-50 text-red-700">
+              <p className="text-sm font-medium">{summaryError}</p>
             </div>
           )}
         </div>

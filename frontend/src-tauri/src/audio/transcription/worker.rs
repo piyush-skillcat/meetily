@@ -27,6 +27,7 @@ pub fn reset_speech_detected_flag() {
 pub struct TranscriptUpdate {
     pub text: String,
     pub timestamp: String, // Wall-clock time for reference (e.g., "14:30:05")
+    /// Audio source of this segment: "mic" (local user / You) or "system" (remote / Them)
     pub source: String,
     pub sequence_id: u64,
     pub chunk_start_time: f64, // Legacy field, kept for compatibility
@@ -64,7 +65,15 @@ pub fn start_transcription_task<R: Runtime>(
         };
 
         // Create parallel workers for faster processing while preserving ALL chunks
-        const NUM_WORKERS: usize = 1; // Serial processing ensures transcripts emit in chronological order
+        // Local engines are serialised (single model lock); cloud providers are
+        // network-bound so a few concurrent uploads keep live latency low.
+        // Ordering is restored on the frontend by audio_start_time.
+        let num_workers: usize = match &transcription_engine {
+            TranscriptionEngine::Provider(_) => 4,
+            _ => 1,
+        };
+        #[allow(non_snake_case)]
+        let NUM_WORKERS = num_workers;
         let (work_sender, work_receiver) = tokio::sync::mpsc::unbounded_channel::<AudioChunk>();
         let work_receiver = Arc::new(tokio::sync::Mutex::new(work_receiver));
 
@@ -142,6 +151,11 @@ pub fn start_transcription_task<R: Runtime>(
 
                             let chunk_timestamp = chunk.timestamp;
                             let chunk_duration = chunk.data.len() as f64 / chunk.sample_rate as f64;
+                            // "mic" = the local user (You), "system" = remote parties (Them)
+                            let chunk_source = match chunk.device_type {
+                                crate::audio::recording_state::DeviceType::Microphone => "mic",
+                                crate::audio::recording_state::DeviceType::System => "system",
+                            };
 
                             // Transcribe with provider-agnostic approach
                             match transcribe_chunk_with_provider(
@@ -167,7 +181,8 @@ pub fn start_transcription_task<R: Runtime>(
                                           worker_id, transcript, confidence_str, is_partial, confidence_threshold);
 
                                     // Check confidence threshold (or accept if no confidence provided)
-                                    let meets_threshold = confidence_opt.map_or(true, |c| c >= confidence_threshold);
+                                    let meets_threshold = confidence_opt.map_or(true, |c| c >= confidence_threshold)
+                                        && !is_filler_only(&transcript);
 
                                     if !transcript.trim().is_empty() && meets_threshold {
                                         // PERFORMANCE: Only log transcription results, not every processing step
@@ -208,7 +223,7 @@ pub fn start_transcription_task<R: Runtime>(
                                         let update = TranscriptUpdate {
                                             text: transcript,
                                             timestamp: format_current_timestamp(), // Wall-clock for reference
-                                            source: "Audio".to_string(),
+                                            source: chunk_source.to_string(),
                                             sequence_id,
                                             chunk_start_time: chunk_timestamp, // Legacy compatibility
                                             is_partial,
@@ -401,6 +416,19 @@ pub fn start_transcription_task<R: Runtime>(
 
         info!("✅ Parallel transcription task completed - all workers finished, ready for model unload");
     })
+}
+
+/// True for outputs that are just a filler/interjection (what recognizers emit
+/// for breaths, clicks and keyboard noise): "Ah", "um.", "Hmm", "Oh!".
+fn is_filler_only(text: &str) -> bool {
+    let t: String = text
+        .trim()
+        .trim_end_matches(|c: char| matches!(c, '.' | '!' | '?' | ','))
+        .to_lowercase();
+    matches!(
+        t.as_str(),
+        "" | "ah" | "uh" | "um" | "hmm" | "hm" | "mm" | "mhm" | "oh" | "eh" | "huh" | "ha" | "ugh" | "yeah" | "you" | "thank you" | "bye"
+    )
 }
 
 /// Transcribe audio chunk using the appropriate provider (Whisper, Parakeet, or trait-based)

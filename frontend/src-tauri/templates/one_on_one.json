@@ -1,0 +1,11 @@
+{
+  "name": "1:1",
+  "description": "Manager/report or peer one-on-ones: updates, feedback, growth, follow-ups.",
+  "sections": [
+    { "title": "Updates", "instruction": "What each person shared about their work, progress, and blockers", "format": "list" },
+    { "title": "Feedback", "instruction": "Feedback given in either direction, stated plainly", "format": "list" },
+    { "title": "Growth & Career", "instruction": "Anything about goals, development, or career direction", "format": "list" },
+    { "title": "Decisions", "instruction": "Anything agreed on", "format": "list" },
+    { "title": "Follow-ups", "instruction": "Commitments and next steps with owner", "format": "list", "item_format": "- [ ] **Owner**: task" }
+  ]
+}

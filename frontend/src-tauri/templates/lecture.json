@@ -1,0 +1,10 @@
+{
+  "name": "Lecture / Talk",
+  "description": "Lectures, talks, webinars, or podcasts where you mostly listen.",
+  "sections": [
+    { "title": "Key Takeaways", "instruction": "The five to eight most important points, specific enough to be useful later", "format": "list" },
+    { "title": "Detailed Notes", "instruction": "Section-by-section notes following the structure of the talk, with definitions, examples, numbers, and references mentioned", "format": "paragraph" },
+    { "title": "Questions & Answers", "instruction": "Questions asked (by anyone) and the answers given", "format": "list" },
+    { "title": "To Look Up", "instruction": "Terms, papers, tools, or people mentioned that are worth following up on", "format": "list" }
+  ]
+}

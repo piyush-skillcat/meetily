@@ -129,6 +129,16 @@ pub async fn start_recording_with_meeting_name<R: Runtime>(
     // ============================================================================
     // MICROPHONE DEVICE RESOLUTION: Preference → Default → Error
     // ============================================================================
+    // A monitor/loopback PCM saved as the *microphone* means every remote voice
+    // would be labelled "You"; ignore such a preference and use the real mic.
+    let preferred_mic_name = preferred_mic_name.filter(|name| {
+        let is_monitor = name.to_lowercase().contains("monitor");
+        if is_monitor {
+            warn!("⚠️ Preferred microphone '{}' is a system-audio monitor; using the default microphone instead", name);
+        }
+        !is_monitor
+    });
+
     let microphone_device = match preferred_mic_name {
         Some(pref_name) => {
             info!("🎤 Attempting to use preferred microphone: '{}'", pref_name);
@@ -275,6 +285,7 @@ pub async fn start_recording_with_meeting_name<R: Runtime>(
                     display_time: update.timestamp.clone(), // Use wall-clock timestamp for display
                     confidence: update.confidence,
                     sequence_id: update.sequence_id,
+                    speaker: Some(update.source.clone()),
                 };
 
                 // Save to recording manager
@@ -446,6 +457,7 @@ pub async fn start_recording_with_devices_and_meeting<R: Runtime>(
                     display_time: update.timestamp.clone(), // Use wall-clock timestamp for display
                     confidence: update.confidence,
                     sequence_id: update.sequence_id,
+                    speaker: Some(update.source.clone()),
                 };
 
                 // Save to recording manager

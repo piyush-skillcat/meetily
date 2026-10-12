@@ -346,3 +346,32 @@ impl SettingsRepository {
         Ok(())
     }
 }
+
+impl SettingsRepository {
+    pub async fn get_default_template_id(
+        pool: &SqlitePool,
+    ) -> std::result::Result<Option<String>, sqlx::Error> {
+        let value: Option<Option<String>> =
+            sqlx::query_scalar("SELECT defaultTemplateId FROM settings WHERE id = '1' LIMIT 1")
+                .fetch_optional(pool)
+                .await?;
+        Ok(value.flatten().filter(|s| !s.trim().is_empty()))
+    }
+
+    pub async fn set_default_template_id(
+        pool: &SqlitePool,
+        template_id: &str,
+    ) -> std::result::Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT INTO settings (id, provider, model, whisperModel, defaultTemplateId)
+            VALUES ('1', 'ollama', 'llama3.2:latest', 'large-v3', $1)
+            ON CONFLICT(id) DO UPDATE SET defaultTemplateId = $1
+            "#,
+        )
+        .bind(template_id)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+}

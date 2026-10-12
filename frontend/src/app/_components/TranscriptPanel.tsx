@@ -23,12 +23,15 @@ interface TranscriptPanelProps {
   isProcessingStop: boolean;
   isStopping: boolean;
   showModal: (name: ModalType, message?: string) => void;
+  /** Narrow side-column layout (used next to the notes pad) */
+  compact?: boolean;
 }
 
 export function TranscriptPanel({
   isProcessingStop,
   isStopping,
-  showModal
+  showModal,
+  compact = false,
 }: TranscriptPanelProps) {
   // Contexts
   const { transcripts, transcriptContainerRef, copyTranscript } = useTranscripts();
@@ -45,17 +48,21 @@ export function TranscriptPanel({
       endTime: t.audio_end_time,
       text: t.text,
       confidence: t.confidence,
+      speaker: t.speaker,
     })),
     [transcripts]
   );
 
   return (
-    <div ref={transcriptContainerRef} className="w-full border-r border-gray-200 bg-white flex flex-col overflow-y-auto">
+    <div ref={transcriptContainerRef} className={`w-full bg-white flex flex-col overflow-y-auto ${compact ? '' : 'border-r border-gray-200'}`}>
       {/* Title area - Sticky header */}
-      <div className="sticky top-0 z-10 bg-white p-4 border-gray-200">
+      <div className={`sticky top-0 z-10 bg-white border-gray-200 ${compact ? 'px-4 pt-4 pb-2 border-b border-gray-100' : 'p-4'}`}>
         <div className="flex flex-col space-y-3">
           <div className="flex  flex-col space-y-2">
-            <div className="flex justify-center  items-center space-x-2">
+            <div className={`flex items-center space-x-2 ${compact ? 'justify-between' : 'justify-center'}`}>
+              {compact && (
+                <span className="text-sm font-medium text-gray-800">Transcript</span>
+              )}
               <ButtonGroup>
                 {transcripts?.length > 0 && (
                   <Button
@@ -102,9 +109,9 @@ export function TranscriptPanel({
       )}
 
       {/* Transcript content */}
-      <div className="pb-20">
+      <div className={compact ? 'pb-32' : 'pb-20'}>
         <div className="flex justify-center">
-          <div className="w-2/3 max-w-[750px]">
+          <div className={compact ? 'w-full' : 'w-2/3 max-w-[750px]'}>
             <VirtualizedTranscriptView
               segments={segments}
               isRecording={isRecording}

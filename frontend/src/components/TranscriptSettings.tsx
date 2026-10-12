@@ -36,7 +36,10 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
     useEffect(() => {
         if (transcriptModelConfig.provider === 'localWhisper' || transcriptModelConfig.provider === 'parakeet') {
             setApiKey(null);
+        } else {
+            fetchApiKey(transcriptModelConfig.provider);
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [transcriptModelConfig.provider]);
 
     const fetchApiKey = async (provider: string) => {
@@ -50,13 +53,38 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
             setApiKey(null);
         }
     };
-    const modelOptions = {
+    const modelOptions: Record<TranscriptModelProps['provider'], Array<{ id: string; label: string }>> = {
         localWhisper: [], // Model selection handled by ModelManager component
         parakeet: [], // Model selection handled by ParakeetModelManager component
-        deepgram: ['nova-2-phonecall'],
-        elevenLabs: ['eleven_multilingual_v2'],
-        groq: ['llama-3.3-70b-versatile'],
-        openai: ['gpt-4o'],
+        deepgram: [{ id: 'nova-3', label: 'nova-3' }],
+        elevenLabs: [{ id: 'scribe_v1', label: 'scribe_v1' }],
+        groq: [
+            { id: 'whisper-large-v3', label: 'whisper-large-v3 (most accurate)' },
+            { id: 'whisper-large-v3-turbo', label: 'whisper-large-v3-turbo (fastest)' },
+        ],
+        openai: [
+            { id: 'gpt-4o-transcribe', label: 'gpt-4o-transcribe (most accurate)' },
+            { id: 'gpt-4o-mini-transcribe', label: 'gpt-4o-mini-transcribe (fast)' },
+            { id: 'whisper-1', label: 'whisper-1' },
+        ],
+    };
+    const cloudDefaultModel: Partial<Record<TranscriptModelProps['provider'], string>> = {
+        groq: 'whisper-large-v3',
+        openai: 'gpt-4o-transcribe',
+        deepgram: 'nova-3',
+        elevenLabs: 'scribe_v1',
+    };
+
+    const handleApiKeyChange = (value: string) => {
+        setApiKey(value);
+        setTranscriptModelConfig({
+            ...transcriptModelConfig,
+            provider: uiProvider,
+            model: transcriptModelConfig.provider === uiProvider && transcriptModelConfig.model
+                ? transcriptModelConfig.model
+                : (cloudDefaultModel[uiProvider] ?? transcriptModelConfig.model),
+            apiKey: value,
+        });
     };
     const requiresApiKey = transcriptModelConfig.provider === 'deepgram' || transcriptModelConfig.provider === 'elevenLabs' || transcriptModelConfig.provider === 'openai' || transcriptModelConfig.provider === 'groq';
 
@@ -114,6 +142,14 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                                     setUiProvider(provider);
                                     if (provider !== 'localWhisper' && provider !== 'parakeet') {
                                         fetchApiKey(provider);
+                                        // Cloud providers: switch immediately with a sensible default model
+                                        setTranscriptModelConfig({
+                                            ...transcriptModelConfig,
+                                            provider,
+                                            model: transcriptModelConfig.provider === provider && transcriptModelConfig.model
+                                                ? transcriptModelConfig.model
+                                                : (cloudDefaultModel[provider] ?? ''),
+                                        });
                                     }
                                 }}
                             >
@@ -121,12 +157,10 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                                     <SelectValue placeholder="Select provider" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="parakeet">⚡ Parakeet (Recommended - Real-time / Accurate)</SelectItem>
-                                    <SelectItem value="localWhisper">🏠 Local Whisper (High Accuracy)</SelectItem>
-                                    {/* <SelectItem value="deepgram">☁️ Deepgram (Backup)</SelectItem>
-                                    <SelectItem value="elevenLabs">☁️ ElevenLabs</SelectItem>
-                                    <SelectItem value="groq">☁️ Groq</SelectItem>
-                                    <SelectItem value="openai">☁️ OpenAI</SelectItem> */}
+                                    <SelectItem value="openai">OpenAI cloud (best accuracy, needs API key)</SelectItem>
+                                    <SelectItem value="groq">Groq Whisper (fast and accurate, needs API key)</SelectItem>
+                                    <SelectItem value="parakeet">Parakeet (local, English, fast)</SelectItem>
+                                    <SelectItem value="localWhisper">Local Whisper (local, multilingual)</SelectItem>
                                 </SelectContent>
                             </Select>
 
@@ -143,7 +177,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                                     </SelectTrigger>
                                     <SelectContent>
                                         {modelOptions[uiProvider].map((model) => (
-                                            <SelectItem key={model} value={model}>{model}</SelectItem>
+                                            <SelectItem key={model.id} value={model.id}>{model.label}</SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
@@ -173,6 +207,12 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                     )}
 
 
+                    {(uiProvider === 'openai' || uiProvider === 'groq') && (
+                        <p className="text-xs text-gray-500 mx-1">
+                            Audio is sent to {uiProvider === 'openai' ? 'OpenAI' : 'Groq'} in short speech segments as you talk. Your mic and the other side are transcribed separately so the transcript shows who said what.
+                        </p>
+                    )}
+
                     {requiresApiKey && (
                         <div>
                             <Label className="block text-sm font-medium text-gray-700 mb-1">
@@ -184,7 +224,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                                     className={`pr-24 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${isApiKeyLocked ? 'bg-gray-100 cursor-not-allowed' : ''
                                         }`}
                                     value={apiKey || ''}
-                                    onChange={(e) => setApiKey(e.target.value)}
+                                    onChange={(e) => handleApiKeyChange(e.target.value)}
                                     disabled={isApiKeyLocked}
                                     onClick={handleInputClick}
                                     placeholder="Enter your API key"

@@ -27,6 +27,7 @@ import { VisuallyHidden } from "@/components/ui/visually-hidden"
 
 import { MessageToast } from '../MessageToast';
 import Logo from '../Logo';
+import { ThemeToggleButton } from '../ThemeSelector';
 import Info from '../Info';
 import { ComplianceNotification } from '../ComplianceNotification';
 import { Input } from '../ui/input';
@@ -539,6 +540,15 @@ const Sidebar: React.FC = () => {
             </TooltipContent>
           </Tooltip>
 
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span><ThemeToggleButton /></span>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              <p>Theme</p>
+            </TooltipContent>
+          </Tooltip>
+
           <Info isCollapsed={isCollapsed} />
         </div>
       </TooltipProvider>
@@ -676,7 +686,7 @@ const Sidebar: React.FC = () => {
       </button>
 
       <div
-        className={`h-screen bg-white border-r shadow-sm flex flex-col transition-all duration-300 ${isCollapsed ? 'w-16' : 'w-64'
+        className={`h-screen bg-surface-1 border-r border-hairline flex flex-col transition-all duration-300 ${isCollapsed ? 'w-16' : 'w-64'
           }`}
       >
         {/*  Header with traffic light spacing */}
@@ -690,7 +700,7 @@ const Sidebar: React.FC = () => {
             {!isCollapsed && (
               <div className="p-3">
                 {/* <span className="text-lg text-center border rounded-full bg-blue-50 border-white font-semibold text-gray-700 mb-2 block items-center">
-                  <span>Meetily</span>
+                  <span>Notesify</span>
                 </span> */}
                 <Logo isCollapsed={isCollapsed} />
 
@@ -809,6 +819,9 @@ const Sidebar: React.FC = () => {
               <Settings className="w-4 h-4 mr-2" />
               <span>Settings</span>
             </button>
+            <div className="w-full flex items-center justify-center mb-1">
+              <ThemeToggleButton />
+            </div>
             <Info isCollapsed={isCollapsed} />
             <div className="w-full flex items-center justify-center px-3 py-1 text-xs text-gray-400">
               v0.4.0

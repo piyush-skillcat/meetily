@@ -8,7 +8,7 @@ import { ConfidenceIndicator } from "./ConfidenceIndicator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { RecordingStatusBar } from "./RecordingStatusBar";
 import { motion, AnimatePresence } from "framer-motion";
-import { TranscriptSegmentData } from "@/types";
+import { TranscriptSegmentData, speakerLabel } from "@/types";
 
 export interface VirtualizedTranscriptViewProps {
     /** Transcript segments to display */
@@ -71,6 +71,8 @@ const TranscriptSegment = memo(function TranscriptSegment({
     confidence,
     isStreaming,
     showConfidence,
+    speaker,
+    showSpeaker,
 }: {
     id: string;
     timestamp: number;
@@ -78,11 +80,22 @@ const TranscriptSegment = memo(function TranscriptSegment({
     confidence?: number;
     isStreaming: boolean;
     showConfidence: boolean;
+    speaker?: string;
+    /** false when the previous row had the same speaker (grouped turn) */
+    showSpeaker: boolean;
 }) {
     const displayText = cleanStopWords(text) || (text.trim() === '' ? '[Silence]' : text);
+    const label = speakerLabel(speaker);
 
     return (
-        <div id={`segment-${id}`} className="mb-3">
+        <div id={`segment-${id}`} className={showSpeaker ? "mb-1 mt-3" : "mb-1"}>
+            {label && showSpeaker && (
+                <div className="ml-[58px] mb-0.5">
+                    <span className={`text-[11px] font-semibold uppercase tracking-wide ${speaker === 'mic' ? 'text-blue-600' : 'text-emerald-700'}`}>
+                        {label}
+                    </span>
+                </div>
+            )}
             <div className="flex items-start gap-2">
                 <Tooltip>
                     <TooltipTrigger>
@@ -257,7 +270,7 @@ export const VirtualizedTranscriptView: React.FC<VirtualizedTranscriptViewProps>
                         </>
                     ) : (
                         <>
-                            <p className="text-lg font-semibold">Welcome to meetily!</p>
+                            <p className="text-lg font-semibold">Welcome to Notesify</p>
                             <p className="text-xs mt-1">Start recording to see live transcription</p>
                         </>
                     )}
@@ -296,6 +309,8 @@ export const VirtualizedTranscriptView: React.FC<VirtualizedTranscriptViewProps>
                                         confidence={segment.confidence}
                                         isStreaming={isStreaming}
                                         showConfidence={showConfidence}
+                                        speaker={segment.speaker}
+                                        showSpeaker={virtualRow.index === 0 || segments[virtualRow.index - 1]?.speaker !== segment.speaker}
                                     />
                                 </div>
                             );
@@ -335,7 +350,7 @@ export const VirtualizedTranscriptView: React.FC<VirtualizedTranscriptViewProps>
                 // Simple rendering for small lists (better animations)
                 <>
                     <div className="space-y-1">
-                        {segments.map((segment) => {
+                        {segments.map((segment, index) => {
                             const isStreaming = streamingSegmentId === segment.id;
 
                             return (
@@ -352,6 +367,8 @@ export const VirtualizedTranscriptView: React.FC<VirtualizedTranscriptViewProps>
                                         confidence={segment.confidence}
                                         isStreaming={isStreaming}
                                         showConfidence={showConfidence}
+                                        speaker={segment.speaker}
+                                        showSpeaker={index === 0 || segments[index - 1]?.speaker !== segment.speaker}
                                     />
                                 </motion.div>
                             );

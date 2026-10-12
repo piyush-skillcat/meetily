@@ -390,6 +390,16 @@ pub fn get_language_preference_internal() -> Option<String> {
 pub fn run() {
     log::set_max_level(log::LevelFilter::Info);
 
+    // Linux: expose the PipeWire/Pulse output monitor as an ALSA capture PCM
+    // (sets ALSA_CONFIG_PATH, so it must run before any audio device is opened).
+    #[cfg(target_os = "linux")]
+    {
+        match audio::devices::platform::ensure_system_monitor_pcm() {
+            Some(pcm) => log::info!("System-audio capture available via ALSA PCM '{}'", pcm),
+            None => log::warn!("System-audio capture is not available on this machine"),
+        }
+    }
+
     let mut builder = tauri::Builder::default();
 
     #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
@@ -424,6 +434,10 @@ pub fn run() {
             if let Err(e) = tray::create_tray(_app.handle()) {
                 log::error!("Failed to create system tray: {}", e);
             }
+
+            // Granola-style "a meeting started" nudge (Linux: watches mic capture streams)
+            #[cfg(target_os = "linux")]
+            audio::meeting_detector::start(_app.handle().clone());
 
             // Initialize notification system with proper defaults
             log::info!("Initializing notification system...");
@@ -671,6 +685,19 @@ pub fn run() {
             summary::template_commands::api_list_templates,
             summary::template_commands::api_get_template_details,
             summary::template_commands::api_validate_template,
+            summary::template_commands::api_get_template_full,
+            summary::template_commands::api_save_template,
+            summary::template_commands::api_delete_template,
+            // Granola-style notes, enhancement and chat
+            summary::notes_commands::api_get_meeting_notes,
+            summary::notes_commands::api_save_meeting_notes,
+            summary::notes_commands::api_get_default_template,
+            summary::notes_commands::api_set_default_template,
+            summary::enhance::api_enhance_notes,
+            summary::chat::api_get_meeting_chat,
+            summary::chat::api_send_meeting_chat,
+            summary::chat::api_clear_meeting_chat,
+            summary::chat::api_cancel_meeting_chat,
             // Built-in AI commands
             summary::summary_engine::commands::builtin_ai_list_models,
             summary::summary_engine::commands::builtin_ai_get_model_info,

@@ -1,14 +1,14 @@
 "use client";
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Summary, SummaryResponse } from '@/types';
-import { useSidebar } from '@/components/Sidebar/SidebarProvider';
 import Analytics from '@/lib/analytics';
 import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 import { TranscriptPanel } from '@/components/MeetingDetails/TranscriptPanel';
-import { SummaryPanel } from '@/components/MeetingDetails/SummaryPanel';
+import { SummaryPanel, SummaryTab } from '@/components/MeetingDetails/SummaryPanel';
 import { ModelConfig } from '@/components/ModelSettingsModal';
+import { readMeetingSummaryLanguage } from '@/lib/summary-language-preferences';
 
 // Custom hooks
 import { useMeetingData } from '@/hooks/meeting-details/useMeetingData';
@@ -16,6 +16,8 @@ import { useSummaryGeneration } from '@/hooks/meeting-details/useSummaryGenerati
 import { useTemplates } from '@/hooks/meeting-details/useTemplates';
 import { useCopyOperations } from '@/hooks/meeting-details/useCopyOperations';
 import { useMeetingOperations } from '@/hooks/meeting-details/useMeetingOperations';
+import { useEnhanceNotes } from '@/hooks/meeting-details/useEnhanceNotes';
+import { useMeetingNotes } from '@/hooks/useMeetingNotes';
 import { useConfig } from '@/contexts/ConfigContext';
 
 export default function PageContent({
@@ -47,22 +49,14 @@ export default function PageContent({
   loadedCount?: number;
   onLoadMore?: () => void;
 }) {
-  console.log('📄 PAGE CONTENT: Initializing with data:', {
-    meetingId: meeting.id,
-    summaryDataKeys: summaryData ? Object.keys(summaryData) : null,
-    transcriptsCount: meeting.transcripts?.length
-  });
-
   // State
   const [customPrompt, setCustomPrompt] = useState<string>('');
   const [isRecording] = useState(false);
   const [summaryResponse] = useState<SummaryResponse | null>(null);
+  const [activeTab, setActiveTab] = useState<SummaryTab>('enhanced');
 
   // Ref to store the modal open function from SummaryGeneratorButtonGroup
   const openModelSettingsRef = useRef<(() => void) | null>(null);
-
-  // Sidebar context
-  const { serverAddress } = useSidebar();
 
   // Get model config from ConfigContext
   const { modelConfig, setModelConfig } = useConfig();
@@ -70,20 +64,15 @@ export default function PageContent({
   // Custom hooks
   const meetingData = useMeetingData({ meeting, summaryData, onMeetingUpdated });
   const templates = useTemplates();
+  const notes = useMeetingNotes(meeting.id);
 
-  // Callback to register the modal open function
   const handleRegisterModalOpen = (openFn: () => void) => {
-    console.log('📝 Registering modal open function in PageContent');
     openModelSettingsRef.current = openFn;
   };
 
-  // Callback to trigger modal open (called from error handler)
   const handleOpenModelSettings = () => {
-    console.log('🔔 Opening model settings from PageContent');
     if (openModelSettingsRef.current) {
       openModelSettingsRef.current();
-    } else {
-      console.warn('⚠️ Modal open function not yet registered');
     }
   };
 
@@ -99,7 +88,6 @@ export default function PageContent({
         ollamaEndpoint: config.ollamaEndpoint ?? null,
       });
 
-      // Emit event so ConfigContext and other listeners stay in sync
       const { emit } = await import('@tauri-apps/api/event');
       await emit('model-config-updated', config);
 
@@ -110,17 +98,60 @@ export default function PageContent({
     }
   };
 
+  // Legacy polling-based generation (kept for status recovery + stop)
   const summaryGeneration = useSummaryGeneration({
     meeting,
     transcripts: meetingData.transcripts,
     modelConfig: modelConfig,
-    isModelConfigLoading: false, // ConfigContext loads on mount
+    isModelConfigLoading: false,
     selectedTemplate: templates.selectedTemplate,
     onMeetingUpdated,
     updateMeetingTitle: meetingData.updateMeetingTitle,
     setAiSummary: meetingData.setAiSummary,
     onOpenModelSettings: handleOpenModelSettings,
   });
+
+  // Granola-style streaming enhancement
+  const enhance = useEnhanceNotes({
+    meetingId: meeting.id,
+    onCompleted: (markdown, title) => {
+      meetingData.setAiSummary({ markdown } as any);
+      if (title) meetingData.updateMeetingTitle(title);
+      setActiveTab('enhanced');
+      onMeetingUpdated?.();
+      Analytics.trackSummaryGenerationCompleted(modelConfig.provider, modelConfig.model, true).catch(() => { });
+    },
+  });
+
+  const handleEnhance = useCallback(async (prompt: string = '') => {
+    if (!modelConfig.provider || !modelConfig.model) {
+      toast.error('Pick an AI model first', { description: 'Open AI Model and choose a provider.' });
+      handleOpenModelSettings();
+      return;
+    }
+    let summaryLanguage: string | null = null;
+    try {
+      summaryLanguage = (await readMeetingSummaryLanguage(meeting.id)).language;
+    } catch {
+      summaryLanguage = null;
+    }
+    setActiveTab('enhanced');
+    Analytics.trackSummaryGenerationStarted(modelConfig.provider, modelConfig.model, 0, 0).catch(() => { });
+    await enhance.start({
+      notesMarkdown: notes.latestMarkdown(),
+      templateId: templates.selectedTemplate,
+      customPrompt: prompt,
+      // Backend resolves the saved provider/model; avoids racing the config load
+      summaryLanguage,
+    });
+  }, [enhance, meeting.id, modelConfig.provider, modelConfig.model, notes, templates.selectedTemplate]);
+
+  const handleStop = useCallback(() => {
+    void enhance.stop();
+    if (summaryGeneration.summaryStatus !== 'idle' && summaryGeneration.summaryStatus !== 'completed') {
+      summaryGeneration.handleStopGeneration();
+    }
+  }, [enhance, summaryGeneration]);
 
   const copyOperations = useCopyOperations({
     meeting,
@@ -134,34 +165,33 @@ export default function PageContent({
     meeting,
   });
 
-  // Track page view
   useEffect(() => {
     Analytics.trackPageView('meeting_details');
   }, []);
 
-  // Auto-generate summary when flag is set
+  // Auto-enhance right after a recording (waits for the notes to load)
+  const autoStartedRef = useRef(false);
   useEffect(() => {
-    let cancelled = false;
+    if (!shouldAutoGenerate || notes.isLoading || autoStartedRef.current) return;
+    const hasTranscripts = (totalCount ?? meetingData.transcripts.length) > 0;
+    if (!hasTranscripts && !notes.latestMarkdown().trim()) return;
+    autoStartedRef.current = true;
+    console.log(`🤖 Auto-enhancing notes with ${modelConfig.provider}/${modelConfig.model}...`);
+    handleEnhance('').finally(() => onAutoGenerateComplete?.());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldAutoGenerate, notes.isLoading, meeting.id]);
 
-    const autoGenerate = async () => {
-      if (shouldAutoGenerate && meetingData.transcripts.length > 0 && !cancelled) {
-        console.log(`🤖 Auto-generating summary with ${modelConfig.provider}/${modelConfig.model}...`);
-        await summaryGeneration.handleGenerateSummary('');
+  useEffect(() => {
+    autoStartedRef.current = false;
+    setActiveTab('enhanced');
+  }, [meeting.id]);
 
-        // Notify parent that auto-generation is complete (only if not cancelled)
-        if (onAutoGenerateComplete && !cancelled) {
-          onAutoGenerateComplete();
-        }
-      }
-    };
-
-    autoGenerate();
-
-    // Cleanup: cancel if component unmounts or meeting changes
-    return () => {
-      cancelled = true;
-    };
-  }, [shouldAutoGenerate, meeting.id]); // Re-run if meeting changes
+  const summaryStatus = enhance.isStreaming
+    ? 'summarizing'
+    : enhance.status === 'error'
+      ? 'error'
+      : summaryGeneration.summaryStatus;
+  const summaryError = enhance.error ?? summaryGeneration.summaryError;
 
   return (
     <motion.div
@@ -179,7 +209,6 @@ export default function PageContent({
           onOpenMeetingFolder={meetingOperations.handleOpenMeetingFolder}
           isRecording={isRecording}
           disableAutoScroll={true}
-          // Pagination props for efficient loading
           usePagination={true}
           segments={segments}
           hasMore={hasMore}
@@ -187,7 +216,6 @@ export default function PageContent({
           totalCount={totalCount}
           loadedCount={loadedCount}
           onLoadMore={onLoadMore}
-          // Retranscription props
           meetingId={meeting.id}
           meetingFolderPath={meeting.folder_path}
           onRefetchTranscripts={onRefetchTranscripts}
@@ -206,26 +234,35 @@ export default function PageContent({
           onCopySummary={copyOperations.handleCopySummary}
           onOpenFolder={meetingOperations.handleOpenMeetingFolder}
           aiSummary={meetingData.aiSummary}
-          summaryStatus={summaryGeneration.summaryStatus}
+          summaryStatus={summaryStatus}
           transcripts={meetingData.transcripts}
+          totalTranscriptCount={totalCount}
           modelConfig={modelConfig}
           setModelConfig={setModelConfig}
           onSaveModelConfig={handleSaveModelConfig}
-          onGenerateSummary={summaryGeneration.handleGenerateSummary}
-          onStopGeneration={summaryGeneration.handleStopGeneration}
+          onGenerateSummary={handleEnhance}
+          onStopGeneration={handleStop}
           customPrompt={customPrompt}
           summaryResponse={summaryResponse}
           onSaveSummary={meetingData.handleSaveSummary}
           onSummaryChange={meetingData.handleSummaryChange}
           onDirtyChange={meetingData.setIsSummaryDirty}
-          summaryError={summaryGeneration.summaryError}
-          onRegenerateSummary={summaryGeneration.handleRegenerateSummary}
+          summaryError={summaryError}
+          onRegenerateSummary={() => handleEnhance(customPrompt)}
           getSummaryStatusMessage={summaryGeneration.getSummaryStatusMessage}
           availableTemplates={templates.availableTemplates}
           selectedTemplate={templates.selectedTemplate}
           onTemplateSelect={templates.handleTemplateSelection}
+          onRefreshTemplates={templates.refreshTemplates}
           isModelConfigLoading={false}
           onOpenModelSettings={handleRegisterModalOpen}
+          streamText={enhance.streamText}
+          notesMarkdown={notes.notesMarkdown}
+          notesJson={notes.notesJson}
+          notesLoading={notes.isLoading}
+          onNotesChange={(md, json) => { void notes.save(md, json); }}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
         />
       </div>
     </motion.div>

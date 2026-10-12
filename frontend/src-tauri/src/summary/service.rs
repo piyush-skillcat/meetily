@@ -194,7 +194,7 @@ pub struct SummaryService;
 
 impl SummaryService {
     /// Registers a new cancellation token for a meeting
-    fn register_cancellation_token(meeting_id: &str) -> CancellationToken {
+    pub fn register_cancellation_token(meeting_id: &str) -> CancellationToken {
         let token = CancellationToken::new();
         if let Ok(mut registry) = CANCELLATION_REGISTRY.lock() {
             registry.insert(meeting_id.to_string(), token.clone());
@@ -217,7 +217,7 @@ impl SummaryService {
     }
 
     /// Cleans up the cancellation token after processing completes
-    fn cleanup_cancellation_token(meeting_id: &str) {
+    pub fn cleanup_cancellation_token(meeting_id: &str) {
         if let Ok(mut registry) = CANCELLATION_REGISTRY.lock() {
             if registry.remove(meeting_id).is_some() {
                 info!("Cleaned up cancellation token for meeting: {}", meeting_id);

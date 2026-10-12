@@ -1,0 +1,12 @@
+{
+  "name": "Interview",
+  "description": "Hiring interviews: evidence per topic, strengths, concerns, recommendation.",
+  "sections": [
+    { "title": "Candidate Background", "instruction": "Relevant experience and context the candidate shared", "format": "list" },
+    { "title": "Topics Covered", "instruction": "One sub-heading per question or topic, with what the candidate actually said and did (specific examples, not impressions)", "format": "paragraph" },
+    { "title": "Strengths", "instruction": "Strengths with the evidence behind each", "format": "list" },
+    { "title": "Concerns", "instruction": "Risks or gaps with the evidence behind each", "format": "list" },
+    { "title": "Candidate's Questions", "instruction": "Questions the candidate asked and what they signal", "format": "list" },
+    { "title": "Next Steps", "instruction": "Agreed next steps in the process", "format": "list" }
+  ]
+}

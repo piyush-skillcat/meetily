@@ -12,6 +12,8 @@ import {
   applyPinnedSummaryLanguageToMeeting,
   detectAndCacheSummaryLanguage,
 } from '@/lib/summary-language-preferences';
+import { notesDraft } from '@/lib/notesDraft';
+import { invoke } from '@tauri-apps/api/core';
 
 type SummaryStatus = 'idle' | 'processing' | 'summarizing' | 'regenerating' | 'completed' | 'error';
 
@@ -263,6 +265,25 @@ export function useRecordingStop(
           if (!meetingId) {
             console.error('No meeting_id in response:', responseData);
             throw new Error('No meeting ID received from save operation');
+          }
+
+          // Move the notes typed during the recording into the meeting row
+          try {
+            const draft = notesDraft.readLive();
+            if (draft && (draft.markdown.trim() || draft.json)) {
+              await invoke('api_save_meeting_notes', {
+                meetingId,
+                notesMarkdown: draft.markdown,
+                notesJson: draft.json ?? null,
+              });
+              console.log('📝 Saved live notes draft to meeting', meetingId);
+            }
+            notesDraft.clearLive();
+          } catch (notesError) {
+            console.warn('Failed to save live notes draft:', notesError);
+            toast.warning('Your notes could not be attached to the meeting', {
+              description: 'They are still saved locally on this device.',
+            });
           }
 
           let shouldDetectSummaryLanguage = false;

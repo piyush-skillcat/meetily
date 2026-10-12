@@ -315,6 +315,7 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
             audio_start_time: update.audio_start_time,
             audio_end_time: update.audio_end_time,
             duration: update.duration,
+            speaker: update.source === 'mic' || update.source === 'system' ? update.source : undefined,
           };
 
           // Add to buffer
@@ -383,6 +384,7 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
             audio_start_time: segment.audio_start_time,
             audio_end_time: segment.audio_end_time,
             duration: segment.duration,
+            speaker: segment.speaker ?? undefined,
           }));
 
           setTranscripts(formattedTranscripts);
@@ -424,6 +426,7 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
       audio_start_time: update.audio_start_time,
       audio_end_time: update.audio_end_time,
       duration: update.duration,
+      speaker: update.source === 'mic' || update.source === 'system' ? update.source : undefined,
     };
 
     setTranscripts(prev => {
@@ -465,7 +468,7 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
     };
 
     const fullTranscript = transcripts
-      .map(t => `${formatTime(t.audio_start_time)} ${t.text}`)
+      .map(t => { const who = t.speaker === 'mic' ? 'You: ' : t.speaker === 'system' ? 'Them: ' : ''; return `${formatTime(t.audio_start_time)} ${who}${t.text}`; })
       .join('\n');
     navigator.clipboard.writeText(fullTranscript);
 

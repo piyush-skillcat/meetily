@@ -165,3 +165,81 @@ mod tests {
         assert!(result.is_err());
     }
 }
+
+// ============================================================================
+// CUSTOM TEMPLATE EDITING (Granola-style user templates)
+// ============================================================================
+
+/// Full template payload for the editor UI.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TemplateFull {
+    pub id: String,
+    /// true when the template lives in the user's custom directory (editable/deletable)
+    pub is_custom: bool,
+    #[serde(flatten)]
+    pub template: templates::Template,
+}
+
+fn slugify(name: &str) -> String {
+    let mut out = String::new();
+    let mut last_dash = false;
+    for c in name.trim().to_lowercase().chars() {
+        if c.is_ascii_alphanumeric() {
+            out.push(c);
+            last_dash = false;
+        } else if !last_dash && !out.is_empty() {
+            out.push('_');
+            last_dash = true;
+        }
+    }
+    let out = out.trim_end_matches('_').to_string();
+    if out.is_empty() { "custom_template".to_string() } else { out }
+}
+
+#[tauri::command]
+pub async fn api_get_template_full<R: Runtime>(
+    _app: tauri::AppHandle<R>,
+    template_id: String,
+) -> Result<TemplateFull, String> {
+    let template = templates::get_template(&template_id)?;
+    Ok(TemplateFull {
+        is_custom: templates::is_custom_template(&template_id),
+        id: template_id,
+        template,
+    })
+}
+
+/// Create or update a custom template. Returns the template id.
+/// Editing a bundled template saves a custom copy under a new id.
+#[tauri::command]
+pub async fn api_save_template<R: Runtime>(
+    _app: tauri::AppHandle<R>,
+    template_id: Option<String>,
+    template: templates::Template,
+) -> Result<String, String> {
+    template.validate()?;
+    let id = match template_id.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
+        Some(id) if templates::is_custom_template(&id) => id,
+        Some(id) => {
+            // Don't overwrite bundled templates; fork into the custom dir
+            let base = slugify(&template.name);
+            if base == id { format!("{}_custom", base) } else { base }
+        }
+        None => slugify(&template.name),
+    };
+    let json = serde_json::to_string_pretty(&template).map_err(|e| e.to_string())?;
+    templates::save_custom_template(&id, &json)?;
+    info!("Saved custom template '{}'", id);
+    Ok(id)
+}
+
+#[tauri::command]
+pub async fn api_delete_template<R: Runtime>(
+    _app: tauri::AppHandle<R>,
+    template_id: String,
+) -> Result<(), String> {
+    if !templates::is_custom_template(&template_id) {
+        return Err("Built-in templates can't be deleted".to_string());
+    }
+    templates::delete_custom_template(&template_id)
+}

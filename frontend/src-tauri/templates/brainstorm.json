@@ -1,0 +1,11 @@
+{
+  "name": "Brainstorm",
+  "description": "Idea generation sessions: capture every idea, then what rose to the top.",
+  "sections": [
+    { "title": "Problem Framing", "instruction": "The problem or goal the session was about, as stated", "format": "paragraph" },
+    { "title": "Ideas", "instruction": "Every distinct idea raised, one bullet each, with who proposed it and any detail given. Group related ideas under sub-headings", "format": "list" },
+    { "title": "Favorites", "instruction": "Ideas the group leaned toward and why", "format": "list" },
+    { "title": "Parked", "instruction": "Ideas set aside and the reason", "format": "list" },
+    { "title": "Next Steps", "instruction": "What happens next, with owner", "format": "list", "item_format": "- [ ] **Owner**: task" }
+  ]
+}

@@ -1,3 +1,5 @@
+@import '../styles/skillcat-tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -77,59 +79,61 @@
 }
 
 @layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 0 0% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 0 0% 3.9%;
+  /* shadcn/ui semantic layer, expressed with the SkillCat palette (HSL for Tailwind's hsl(var()) usage).
+     Light = warm sand, dark = near-black. Values mirror styles/skillcat-tokens.css. */
+  :root, [data-theme="light"] {
+    --background: 40 27% 90%;          /* surface.0  #ECE7DE */
+    --foreground: 33 11% 23%;          /* text.body  #403B33 */
+    --card: 0 0% 100%;                 /* surface.2  */
+    --card-foreground: 33 11% 23%;
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 3.9%;
-    --primary: 0 0% 9%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
-    --accent: 0 0% 96.1%;
-    --accent-foreground: 0 0% 9%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
-    --ring: 0 0% 3.9%;
+    --popover-foreground: 33 11% 23%;
+    --primary: 15 87% 54%;             /* #F05523 */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 38 38% 94%;           /* surface.1 #F6F2EB */
+    --secondary-foreground: 33 11% 23%;
+    --muted: 36 34% 88%;               /* ink.800 #EAE3D7 */
+    --muted-foreground: 32 11% 43%;    /* ink.300 #797161 */
+    --accent: 36 34% 88%;
+    --accent-foreground: 30 12% 15%;   /* ink.100 */
+    --destructive: 356 63% 49%;        /* #CE2E39 */
+    --destructive-foreground: 0 0% 100%;
+    --border: 36 27% 85%;              /* border.hairline #E4DCD0 */
+    --input: 36 27% 85%;
+    --ring: 15 87% 54%;
     --radius: 0.5rem;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
+    --chart-1: 15 87% 54%;
+    --chart-2: 146 64% 33%;
+    --chart-3: 211 53% 45%;
+    --chart-4: 36 87% 42%;
+    --chart-5: 255 46% 55%;
   }
 
-  .dark {
-    --background: 0 0% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 0 0% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 0 0% 9%;
-    --secondary: 0 0% 14.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 14.9%;
-    --muted-foreground: 0 0% 63.9%;
-    --accent: 0 0% 14.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
-    --ring: 0 0% 83.1%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+  [data-theme="dark"] {
+    --background: 0 0% 5%;             /* surface.0 #0D0D0D */
+    --foreground: 0 0% 85%;            /* text.body #D9D9D9 */
+    --card: 0 0% 12%;                  /* surface.2 #1E1D1D */
+    --card-foreground: 0 0% 85%;
+    --popover: 0 0% 12%;
+    --popover-foreground: 0 0% 85%;
+    --primary: 15 87% 54%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 9%;              /* surface.1 #171717 */
+    --secondary-foreground: 0 0% 85%;
+    --muted: 0 0% 15%;                 /* ink.800 #262626 */
+    --muted-foreground: 0 0% 66%;      /* ink.300 #A8A8A8 */
+    --accent: 0 0% 15%;
+    --accent-foreground: 0 0% 94%;
+    --destructive: 355 100% 56%;       /* #FF1F31 */
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 28%;                /* border.hairline #484747 */
+    --input: 0 0% 28%;
+    --ring: 15 87% 54%;
+    --chart-1: 15 87% 54%;
+    --chart-2: 151 80% 40%;
+    --chart-3: 210 100% 56%;
+    --chart-4: 44 100% 57%;
+    --chart-5: 252 100% 63%;
   }
 }
 
@@ -212,3 +216,35 @@
     overflow: visible !important;
   }
 }
+/* Markdown rendered inside the Ask chat bubbles and the streaming preview */
+.chat-md p { margin: 0.25rem 0; }
+.chat-md ul, .chat-md ol { margin: 0.25rem 0 0.25rem 1.25rem; }
+.chat-md ul { list-style: disc; }
+.chat-md ol { list-style: decimal; }
+.chat-md li { margin: 0.125rem 0; }
+.chat-md h1, .chat-md h2, .chat-md h3 { font-weight: 600; margin: 0.6rem 0 0.25rem; }
+.chat-md h1 { font-size: 1.15rem; }
+.chat-md h2 { font-size: 1.05rem; }
+.chat-md h3 { font-size: 1rem; }
+.chat-md code { font-family: var(--sc-font-mono); background: var(--sc-border-subtle); padding: 0.1rem 0.3rem; border-radius: 0.25rem; font-size: 0.85em; }
+.chat-md pre { font-family: var(--sc-font-mono); background: var(--sc-border-subtle); padding: 0.5rem 0.75rem; border-radius: 0.375rem; overflow-x: auto; }
+.chat-md table { border-collapse: collapse; margin: 0.5rem 0; font-size: 0.9em; }
+.chat-md th, .chat-md td { border: 1px solid var(--sc-border-hairline); padding: 0.25rem 0.5rem; }
+.chat-md blockquote { border-left: 3px solid var(--sc-border-hairline); padding-left: 0.75rem; color: var(--sc-text-muted); margin: 0.4rem 0; }
+.chat-md input[type="checkbox"] { margin-right: 0.4rem; }
+
+/* Streaming "enhanced notes" preview */
+.stream-md { font-size: 0.95rem; line-height: 1.6; color: var(--sc-text-body); }
+.stream-md h1 { font-size: 1.5rem; font-weight: 700; margin: 0.5rem 0 0.75rem; color: var(--sc-text-strong); }
+.stream-md h2 { font-size: 1.15rem; font-weight: 600; margin: 1rem 0 0.4rem; color: var(--sc-text-strong); }
+.stream-md h3 { font-size: 1rem; font-weight: 600; margin: 0.75rem 0 0.3rem; }
+.stream-md ul, .stream-md ol { margin: 0.25rem 0 0.5rem 1.25rem; }
+.stream-md ul { list-style: disc; }
+.stream-md ol { list-style: decimal; }
+.stream-md li { margin: 0.15rem 0; }
+.stream-md p { margin: 0.35rem 0; }
+.stream-md table { border-collapse: collapse; margin: 0.5rem 0; font-size: 0.9em; }
+.stream-md th, .stream-md td { border: 1px solid var(--sc-border-hairline); padding: 0.25rem 0.5rem; }
+
+/* Notes pad: tighter padding than the summary editor */
+.notes-pad .bn-editor { padding-inline: 0.75rem; }

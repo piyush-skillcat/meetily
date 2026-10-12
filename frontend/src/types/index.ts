@@ -16,6 +16,15 @@ export interface Transcript {
   audio_start_time?: number; // Seconds from recording start (e.g., 125.3)
   audio_end_time?: number;   // Seconds from recording start (e.g., 128.6)
   duration?: number;          // Segment duration in seconds (e.g., 3.3)
+  /** Audio source: "mic" = You (the local user), "system" = Them (remote parties) */
+  speaker?: string;
+}
+
+/** Human label for a transcript source tag. */
+export function speakerLabel(speaker?: string | null): string {
+  if (speaker === 'mic') return 'You';
+  if (speaker === 'system') return 'Them';
+  return '';
 }
 
 export interface TranscriptUpdate {
@@ -107,4 +116,59 @@ export interface TranscriptSegmentData {
   endTime?: number; // audio_end_time in seconds
   text: string;
   confidence?: number;
+  /** "mic" (You) or "system" (Them) */
+  speaker?: string;
+}
+
+/** Notes the user typed during/after a meeting (meeting_notes table). */
+export interface MeetingNotes {
+  meeting_id: string;
+  notes_markdown: string | null;
+  notes_json: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatMessageRow {
+  id: string;
+  meeting_id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  created_at: string;
+}
+
+export interface EnhanceStreamEvent {
+  meeting_id: string;
+  delta?: string;
+  done: boolean;
+  error?: string;
+  markdown?: string;
+  title?: string;
+}
+
+export interface ChatStreamEvent {
+  meeting_id: string;
+  request_id: string;
+  delta?: string;
+  done: boolean;
+  error?: string;
+  message?: ChatMessageRow;
+}
+
+export interface TemplateSectionDef {
+  title: string;
+  instruction: string;
+  format: 'paragraph' | 'list' | 'string';
+  item_format?: string;
+}
+
+export interface TemplateDef {
+  name: string;
+  description: string;
+  sections: TemplateSectionDef[];
+}
+
+export interface TemplateFull extends TemplateDef {
+  id: string;
+  is_custom: boolean;
 }

@@ -556,7 +556,10 @@ impl WhisperEngine {
         // Additional suppression to reduce C library verbosity
         params.set_suppress_blank(true);
         params.set_suppress_non_speech_tokens(true);
-        params.set_temperature(adaptive_config.temperature);
+        // Deterministic decoding: start at temperature 0 and let whisper.cpp's
+        // built-in fallback (temperature_inc) raise it only when decoding fails.
+        params.set_temperature(0.0);
+        params.set_temperature_inc(0.2);
         params.set_max_initial_ts(1.0);
         params.set_entropy_thold(2.4);
         params.set_logprob_thold(-1.0);
@@ -567,11 +570,14 @@ impl WhisperEngine {
         params.set_max_len(200);
         params.set_single_segment(false);
 
-        // Set thread count based on hardware (if supported by whisper.cpp)
-        if let Some(_max_threads) = adaptive_config.max_threads {
-            // Note: whisper.cpp may or may not expose thread control through params
-            // Removed debug log to reduce I/O overhead in transcription hot path
-        }
+        // Use the real core count instead of whisper.cpp's default of 4
+        let n_threads = adaptive_config
+            .max_threads
+            .unwrap_or_else(|| std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4))
+            .max(4)
+            .min(16) as i32;
+        params.set_n_threads(n_threads);
+        let _ = adaptive_config.temperature;
 
         let duration_seconds = audio_data.len() as f64 / 16000.0;
         let is_partial = duration_seconds < 15.0; // Consider chunks under 15s as partial
@@ -599,13 +605,12 @@ impl WhisperEngine {
                 Err(_) => continue,
             };
 
-            // Calculate confidence based on segment length and duration (simplified approach)
-            let segment_length = segment_text.len() as f32;
-            let segment_confidence = if segment_length > 0.0 {
-                (segment_length / 100.0).min(0.9) + 0.1 // 0.1 to 1.0 confidence based on text length
-            } else {
-                0.1
-            };
+            // Heuristic confidence: whisper.cpp exposes no per-segment score here.
+            // Any non-empty segment is treated as confident; the hallucination
+            // filter below handles junk. (The old length heuristic dropped short,
+            // valid replies like "Yes, agreed.")
+            let segment_length = segment_text.trim().len() as f32;
+            let segment_confidence = if segment_length > 0.0 { 0.9 } else { 0.1 };
             total_confidence += segment_confidence;
             segment_count += 1;
 

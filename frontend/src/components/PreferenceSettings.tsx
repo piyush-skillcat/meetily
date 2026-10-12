@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react"
 import { Switch } from "./ui/switch"
+import { ThemeSelector } from "./ThemeSelector"
 import { FolderOpen } from "lucide-react"
 import { invoke } from "@tauri-apps/api/core"
 import Analytics from "@/lib/analytics"
@@ -150,6 +151,12 @@ export function PreferenceSettings() {
     <div className="space-y-6">
       {/* Notifications Section */}
       <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
+        <div className="mb-8">
+          <h3 className="text-lg font-semibold text-gray-900 mb-1">Appearance</h3>
+          <p className="text-sm text-gray-500 mb-3">Follow your system theme, or pick one.</p>
+          <ThemeSelector />
+        </div>
+
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Notifications</h3>
@@ -163,7 +170,7 @@ export function PreferenceSettings() {
       <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Data Storage Locations</h3>
         <p className="text-sm text-gray-600 mb-6">
-          View and access where Meetily stores your data
+          View and access where Notesify stores your data
         </p>
 
         <div className="space-y-4">

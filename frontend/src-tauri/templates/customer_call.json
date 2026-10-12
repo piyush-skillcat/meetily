@@ -1,0 +1,12 @@
+{
+  "name": "Customer Call",
+  "description": "Discovery, sales, or support calls with a customer or prospect.",
+  "sections": [
+    { "title": "About the Customer", "instruction": "Who they are, their role, company, and context that matters", "format": "list" },
+    { "title": "Pain Points & Goals", "instruction": "Problems they described and what they are trying to achieve, in their words where possible", "format": "list" },
+    { "title": "Current Setup", "instruction": "Tools, process, or workaround they use today, and what they dislike about it", "format": "list" },
+    { "title": "Objections & Questions", "instruction": "Concerns, objections, or questions they raised and how they were answered", "format": "list" },
+    { "title": "Commercials & Timeline", "instruction": "Budget, pricing, decision process, stakeholders, and timeline mentioned", "format": "list" },
+    { "title": "Next Steps", "instruction": "Agreed follow-ups with owner and date", "format": "list", "item_format": "- [ ] **Owner**: task (date)" }
+  ]
+}

@@ -38,6 +38,20 @@ pub fn default_output_device() -> Result<AudioDevice> {
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         let host = cpal::default_host();
+
+        // On Linux the "system audio" device must be a *capture* PCM that reads
+        // the output's monitor; the cpal default output ("default") opened as an
+        // input would just be the microphone again.
+        #[cfg(target_os = "linux")]
+        {
+            let _ = super::platform::ensure_system_monitor_pcm();
+            if let Some(monitor) = super::platform::find_system_monitor_device(&host) {
+                info!("Using system-audio monitor PCM '{}'", monitor.name);
+                return Ok(monitor);
+            }
+            warn!("No system-audio monitor PCM found; remote audio will not be captured");
+        }
+
         let device = host
             .default_output_device()
             .ok_or_else(|| anyhow!("No default output device found"))?;

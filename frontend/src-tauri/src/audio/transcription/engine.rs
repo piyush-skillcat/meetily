@@ -135,10 +135,20 @@ pub async fn validate_transcription_model_ready<R: Runtime>(app: &AppHandle<R>) 
                 }
             }
         }
+        "openai" | "groq" => {
+            info!("☁️ Validating cloud transcription provider '{}'...", config.provider);
+            match config.api_key.as_deref().map(str::trim) {
+                Some(key) if !key.is_empty() => Ok(()),
+                _ => Err(format!(
+                    "No API key configured for {} cloud transcription. Add it in Settings → Transcription.",
+                    config.provider
+                )),
+            }
+        }
         other => {
             warn!("❌ Unsupported transcription provider for local recording: {}", other);
             Err(format!(
-                "Provider '{}' is not supported for local transcription. Please select 'localWhisper' or 'parakeet'.",
+                "Provider '{}' is not supported for transcription. Please select 'parakeet', 'localWhisper', 'openai' or 'groq'.",
                 other
             ))
         }
@@ -211,6 +221,18 @@ pub async fn get_or_init_transcription_engine<R: Runtime>(
                     Err("Parakeet engine not initialized. This should not happen after validation.".to_string())
                 }
             }
+        }
+        "openai" | "groq" => {
+            let vendor = super::cloud_provider::CloudSttVendor::from_provider_str(&config.provider)
+                .ok_or_else(|| format!("Unknown cloud STT provider '{}'", config.provider))?;
+            let api_key = config
+                .api_key
+                .map(|k| k.trim().to_string())
+                .filter(|k| !k.is_empty())
+                .ok_or_else(|| format!("No API key configured for {} transcription", config.provider))?;
+            info!("☁️ Initializing {} cloud transcription (model: {})", config.provider, config.model);
+            let provider = super::cloud_provider::CloudTranscriptionProvider::new(vendor, config.model, api_key);
+            Ok(TranscriptionEngine::Provider(Arc::new(provider)))
         }
         "localWhisper" | _ => {
             info!("🎤 Initializing Whisper transcription engine");

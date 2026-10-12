@@ -14,15 +14,17 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Sparkles, Settings, Loader2, FileText, Check, Square } from 'lucide-react';
+import { Sparkles, Settings, Loader2, FileText, Check, Square, SlidersHorizontal } from 'lucide-react';
 import Analytics from '@/lib/analytics';
 import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
-import { useState, useEffect, useRef, ReactNode } from 'react';
+import { useState, useEffect, ReactNode } from 'react';
 import { isOllamaNotInstalledError } from '@/lib/utils';
 import { BuiltInModelInfo } from '@/lib/builtin-ai';
+import { TemplateManagerDialog } from '@/components/Templates/TemplateManagerDialog';
 
 interface SummaryGeneratorButtonGroupProps {
   languageSlot?: ReactNode;
@@ -36,8 +38,11 @@ interface SummaryGeneratorButtonGroupProps {
   availableTemplates: Array<{ id: string, name: string, description: string }>;
   selectedTemplate: string;
   onTemplateSelect: (templateId: string, templateName: string) => void;
+  onRefreshTemplates?: () => void;
   hasTranscripts?: boolean;
   hasSummary?: boolean;
+  /** Whether the user has typed any notes (changes the button label) */
+  hasNotes?: boolean;
   isModelConfigLoading?: boolean;
   onOpenModelSettings?: (openFn: () => void) => void;
 }
@@ -53,33 +58,26 @@ export function SummaryGeneratorButtonGroup({
   availableTemplates,
   selectedTemplate,
   onTemplateSelect,
+  onRefreshTemplates,
   hasTranscripts = true,
   hasSummary = false,
+  hasNotes = false,
   isModelConfigLoading = false,
   onOpenModelSettings,
   languageSlot
 }: SummaryGeneratorButtonGroupProps) {
   const [isCheckingModels, setIsCheckingModels] = useState(false);
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
+  const [templateManagerOpen, setTemplateManagerOpen] = useState(false);
 
   // Expose the function to open the modal via callback registration
   useEffect(() => {
     if (onOpenModelSettings) {
-      // Register our open dialog function with the parent by calling the callback
-      // This allows the parent to store a reference to this function
-      const openDialog = () => {
-        console.log('📱 Opening model settings dialog via callback');
-        setSettingsDialogOpen(true);
-      };
-
-      // Call the parent's callback with our open function
-      // Note: This assumes onOpenModelSettings accepts a function parameter
-      // We'll need to adjust the signature
-      onOpenModelSettings(openDialog);
+      onOpenModelSettings(() => setSettingsDialogOpen(true));
     }
   }, [onOpenModelSettings]);
 
-  if (!hasTranscripts) {
+  if (!hasTranscripts && !hasNotes) {
     return null;
   }
 
@@ -88,7 +86,6 @@ export function SummaryGeneratorButtonGroup({
     try {
       const selectedModel = modelConfig.model;
 
-      // Check if specific model is configured
       if (!selectedModel) {
         toast.error('No built-in AI model selected', {
           description: 'Please select a model in settings',
@@ -98,19 +95,16 @@ export function SummaryGeneratorButtonGroup({
         return;
       }
 
-      // Check model readiness (with filesystem refresh)
       const isReady = await invoke<boolean>('builtin_ai_is_model_ready', {
         modelName: selectedModel,
         refresh: true,
       });
 
       if (isReady) {
-        // Model is available, proceed with generation
         onGenerateSummary(customPrompt);
         return;
       }
 
-      // Model not ready - check detailed status
       const modelInfo = await invoke<BuiltInModelInfo | null>('builtin_ai_get_model_info', {
         modelName: selectedModel,
       });
@@ -124,7 +118,6 @@ export function SummaryGeneratorButtonGroup({
         return;
       }
 
-      // Handle different model states
       const status = modelInfo.status;
 
       if (status.type === 'downloading') {
@@ -162,7 +155,6 @@ export function SummaryGeneratorButtonGroup({
         return;
       }
 
-      // Fallback
       toast.error('Model not available', {
         description: 'The selected model is not ready for use',
         duration: 5000,
@@ -181,13 +173,11 @@ export function SummaryGeneratorButtonGroup({
   };
 
   const checkOllamaModelsAndGenerate = async () => {
-    // Handle built-in AI provider
     if (modelConfig.provider === 'builtin-ai') {
       await checkBuiltInAIModelsAndGenerate();
       return;
     }
 
-    // Only check for Ollama provider
     if (modelConfig.provider !== 'ollama') {
       onGenerateSummary(customPrompt);
       return;
@@ -199,23 +189,20 @@ export function SummaryGeneratorButtonGroup({
       const models = await invoke('get_ollama_models', { endpoint }) as any[];
 
       if (!models || models.length === 0) {
-        // No models available, show message and open settings
         toast.error(
-          'No Ollama models found. Please download gemma2:2b from Model Settings.',
+          'No Ollama models found. Please download a model from Model Settings.',
           { duration: 5000 }
         );
         setSettingsDialogOpen(true);
         return;
       }
 
-      // Models are available, proceed with generation
       onGenerateSummary(customPrompt);
     } catch (error) {
       console.error('Error checking Ollama models:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
 
       if (isOllamaNotInstalledError(errorMessage)) {
-        // Ollama is not installed - show specific message with download link
         toast.error(
           'Ollama is not installed',
           {
@@ -228,7 +215,6 @@ export function SummaryGeneratorButtonGroup({
           }
         );
       } else {
-        // Other error - generic message
         toast.error(
           'Failed to check Ollama models. Please check if Ollama is running and download a model.',
           { duration: 5000 }
@@ -241,10 +227,11 @@ export function SummaryGeneratorButtonGroup({
   };
 
   const isGenerating = summaryStatus === 'processing' || summaryStatus === 'summarizing' || summaryStatus === 'regenerating';
+  const selectedTemplateName = availableTemplates.find(t => t.id === selectedTemplate)?.name ?? 'Auto';
+  const mainLabel = hasSummary ? 'Re-enhance' : hasNotes ? 'Enhance notes' : 'Generate notes';
 
   return (
     <ButtonGroup>
-      {/* Generate Summary or Stop button */}
       {isGenerating ? (
         <Button
           variant="outline"
@@ -254,7 +241,7 @@ export function SummaryGeneratorButtonGroup({
             Analytics.trackButtonClick('stop_summary_generation', 'meeting_details');
             onStopGeneration();
           }}
-          title="Stop summary generation"
+          title="Stop"
         >
           <Square className="xl:mr-2" size={18} fill="currentColor" />
           <span className="hidden lg:inline xl:inline">Stop</span>
@@ -274,7 +261,9 @@ export function SummaryGeneratorButtonGroup({
               ? 'Loading model configuration...'
               : isCheckingModels
                 ? 'Checking models...'
-                : hasSummary ? 'Regenerate AI Summary' : 'Generate AI Summary'
+                : hasNotes
+                  ? 'Rewrite your notes into a complete document using the transcript'
+                  : 'Write notes from the transcript'
           }
         >
           {isCheckingModels || isModelConfigLoading ? (
@@ -285,7 +274,7 @@ export function SummaryGeneratorButtonGroup({
           ) : (
             <>
               <Sparkles className="xl:mr-2" size={18} />
-              <span className="hidden lg:inline xl:inline">{hasSummary ? 'Regenerate Summary' : 'Generate Summary'}</span>
+              <span className="hidden lg:inline xl:inline">{mainLabel}</span>
             </>
           )}
         </Button>
@@ -299,7 +288,7 @@ export function SummaryGeneratorButtonGroup({
           <Button
             variant="outline"
             size="sm"
-            title="Summary Settings"
+            title="AI model used for notes and chat"
           >
             <Settings />
             <span className="hidden lg:inline">AI Model</span>
@@ -325,36 +314,46 @@ export function SummaryGeneratorButtonGroup({
       </Dialog>
 
       {/* Template selector dropdown */}
-      {availableTemplates.length > 0 && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              title="Select summary template"
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            title={`Template: ${selectedTemplateName}`}
+          >
+            <FileText />
+            <span className="hidden lg:inline max-w-[140px] truncate">{selectedTemplateName}</span>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="max-h-[70vh] overflow-y-auto">
+          {availableTemplates.map((template) => (
+            <DropdownMenuItem
+              key={template.id}
+              onClick={() => onTemplateSelect(template.id, template.name)}
+              title={template.description}
+              className="flex items-center justify-between gap-2"
             >
-              <FileText />
-              <span className="hidden lg:inline">Template</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {availableTemplates.map((template) => (
-              <DropdownMenuItem
-                key={template.id}
-                onClick={() => onTemplateSelect(template.id, template.name)}
-                title={template.description}
-                className="flex items-center justify-between gap-2"
-              >
-                <span>{template.name}</span>
-                {selectedTemplate === template.id && (
-                  <Check className="h-4 w-4 text-green-600" />
-                )}
-              </DropdownMenuItem>
-            ))}
+              <span>{template.name}</span>
+              {selectedTemplate === template.id && (
+                <Check className="h-4 w-4 text-green-600" />
+              )}
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => setTemplateManagerOpen(true)} className="flex items-center gap-2">
+            <SlidersHorizontal className="h-4 w-4" />
+            <span>Manage templates…</span>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
+      <TemplateManagerDialog
+        open={templateManagerOpen}
+        onOpenChange={setTemplateManagerOpen}
+        selectedTemplateId={selectedTemplate}
+        onChanged={onRefreshTemplates}
+        onUseTemplate={onTemplateSelect}
+      />
     </ButtonGroup>
   );
 }

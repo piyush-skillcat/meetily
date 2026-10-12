@@ -1,0 +1,32 @@
+{
+  "name": "Auto structure",
+  "description": "Let the AI pick the structure from your notes and the conversation. Good default for most meetings.",
+  "sections": [
+    {
+      "title": "Summary",
+      "instruction": "Two to four bullets capturing what the meeting was about and what came out of it",
+      "format": "list"
+    },
+    {
+      "title": "Discussion",
+      "instruction": "Organize the conversation by topic, one sub-heading per topic, with specific details under each (names, numbers, reasons, outcomes). Follow the order of the user's notes where they exist",
+      "format": "paragraph"
+    },
+    {
+      "title": "Decisions",
+      "instruction": "Decisions that were actually made, each with the reason if one was given",
+      "format": "list"
+    },
+    {
+      "title": "Action Items",
+      "instruction": "Every commitment or task, with its owner and due date when mentioned",
+      "format": "list",
+      "item_format": "- [ ] **Owner**: task (due date)"
+    },
+    {
+      "title": "Open Questions",
+      "instruction": "Questions raised but not resolved",
+      "format": "list"
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "$description": "SkillCat — DARK theme (canonical near-black). Build as: core.tokens.json + this file. Same semantic keys as light.tokens.json, dark values. References like {primary} resolve against core.",
+
+  "ink": {
+    "$type": "color",
+    "$description": "Grayscale ramp. ink-100 = lightest text → ink-900 = darkest fill.",
+    "100": { "$value": "#F0F0F0" },
+    "200": { "$value": "#D9D9D9" },
+    "300": { "$value": "#A8A8A8" },
+    "400": { "$value": "#939393" },
+    "500": { "$value": "#737373" },
+    "600": { "$value": "#484747" },
+    "700": { "$value": "#404040" },
+    "800": { "$value": "#262626" },
+    "900": { "$value": "#1A1A1A" }
+  },
+
+  "surface": {
+    "$type": "color",
+    "0":      { "$value": "#0D0D0D", "$description": "App background, flat." },
+    "1":      { "$value": "#171717", "$description": "Cards/modals. Solid approx of the 10% gray gradient overlay — recipe in DESIGN.md." },
+    "2":      { "$value": "#1E1D1D", "$description": "Elevated panels/hover. Approx of the 15% overlay." },
+    "sunken": { "$value": "#080808", "$description": "Recessed wells, deeper than surface-0." },
+    "glass":  { "$value": "#D9D9D91A", "$description": "Approx of the frosted overlay; true recipe is a gradient — see DESIGN.md." }
+  },
+
+  "border": {
+    "$type": "color",
+    "hairline": { "$value": "#484747" },
+    "subtle":   { "$value": "#FFFFFF1A" }
+  },
+
+  "text": {
+    "$type": "color",
+    "$description": "Semantic text roles (additive; alias the ink ramp).",
+    "strong":    { "$value": "{ink.100}" },
+    "body":      { "$value": "{ink.200}" },
+    "muted":     { "$value": "{ink.300}" },
+    "disabled":  { "$value": "{ink.500}" },
+    "on-accent": { "$value": "{white}" }
+  },
+
+  "success":    { "$type": "color", "$value": "#14B867" },
+  "info":       { "$type": "color", "$value": "#1E90FF" },
+  "warning":    { "$type": "color", "$value": "#FFC524" },
+  "danger":     { "$type": "color", "$value": "#FF1F31" },
+  "accent":     { "$type": "color", "$value": "#6944FF" },
+  "success-bg": { "$type": "color", "$value": "#14B86733", "$description": "20% alpha fill (dark mode)." },
+  "info-bg":    { "$type": "color", "$value": "#1E90FF33" },
+  "warning-bg": { "$type": "color", "$value": "#FFC52433" },
+  "danger-bg":  { "$type": "color", "$value": "#FF1F3133" },
+  "accent-bg":  { "$type": "color", "$value": "#6944FF33" },
+
+  "shadow": {
+    "$type": "shadow",
+    "sm": { "$value": { "color": "#00000040", "offsetX": { "value": 0, "unit": "px" }, "offsetY": { "value": 2,  "unit": "px" }, "blur": { "value": 4,  "unit": "px" }, "spread": { "value": 0, "unit": "px" } } },
+    "md": { "$value": { "color": "#00000059", "offsetX": { "value": 0, "unit": "px" }, "offsetY": { "value": 4,  "unit": "px" }, "blur": { "value": 12, "unit": "px" }, "spread": { "value": 0, "unit": "px" } } },
+    "lg": { "$value": { "color": "#00000073", "offsetX": { "value": 0, "unit": "px" }, "offsetY": { "value": 12, "unit": "px" }, "blur": { "value": 32, "unit": "px" }, "spread": { "value": 0, "unit": "px" } } }
+  },
+  "glow-primary": { "$type": "shadow", "$value": { "color": "#F0552359", "offsetX": { "value": 0, "unit": "px" }, "offsetY": { "value": 0, "unit": "px" }, "blur": { "value": 24, "unit": "px" }, "spread": { "value": 0, "unit": "px" } } },
+
+  "cta-shadow": {
+    "$type": "shadow",
+    "$description": "Signature CTA shadow (dark). The matching radial fill is not a portable DTCG type — see DESIGN.md.",
+    "$value": [
+      { "color": "#F0552366", "offsetX": { "value": 0, "unit": "px" }, "offsetY": { "value": 0, "unit": "px" }, "blur": { "value": 0,  "unit": "px" }, "spread": { "value": 1, "unit": "px" } },
+      { "color": "#8A3114BF", "inset": true, "offsetX": { "value": 0, "unit": "px" }, "offsetY": { "value": 0, "unit": "px" }, "blur": { "value": 16, "unit": "px" }, "spread": { "value": 0, "unit": "px" } }
+    ]
+  }
+}

@@ -190,6 +190,16 @@ impl LoudnessNormalizer {
 
         const TARGET_LUFS: f64 = -23.0;
         const ANALYZE_CHUNK_SIZE: usize = 512;
+        // Never boost by more than this: unbounded make-up gain turns room noise
+        // into "speech" for the VAD and makes Whisper hallucinate.
+        const MAX_GAIN_DB: f32 = 18.0;
+        // Below this input level (≈ -50 dBFS RMS) the chunk is treated as silence
+        // and passed through without make-up gain.
+        const NOISE_FLOOR_RMS: f32 = 0.0008;
+
+        let max_gain = 10_f32.powf(MAX_GAIN_DB / 20.0);
+        let chunk_rms = (samples.iter().map(|s| s * s).sum::<f32>() / samples.len() as f32).sqrt();
+        let gate_open = chunk_rms >= NOISE_FLOOR_RMS;
 
         let mut normalized_samples = Vec::with_capacity(samples.len());
 
@@ -213,8 +223,9 @@ impl LoudnessNormalizer {
                 self.loudness_buffer.clear();
             }
 
-            // Apply gain and true peak limiting
-            let amplified = sample * self.gain_linear;
+            // Apply (capped, gated) gain and true peak limiting
+            let gain = if gate_open { self.gain_linear.min(max_gain) } else { 1.0 };
+            let amplified = sample * gain;
             let limited = self.limiter.process(amplified, self.true_peak_limit);
 
             normalized_samples.push(limited);

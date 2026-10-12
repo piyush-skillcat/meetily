@@ -15,6 +15,110 @@ use super::vad::{ContinuousVadProcessor};
 
 /// Ring buffer for synchronized audio mixing
 /// Accumulates samples from mic and system streams until we have aligned windows
+/// If the microphone window's RMS is below this fraction of the system window's RMS,
+/// the mic window is treated as speaker bleed and ignored for transcription.
+const MIC_BLEED_RATIO: f32 = 0.35;
+
+/// VAD segments quieter than this RMS (≈ -48 dBFS) are not worth transcribing.
+const MIN_SEGMENT_RMS: f32 = 0.004;
+
+/// Target RMS for speech-like windows handed to the VAD/recognizer (≈ -24 dBFS).
+const GATE_TARGET_RMS: f32 = 0.06;
+/// A window must exceed the tracked noise floor by this factor (12 dB) to count as speech.
+const GATE_FLOOR_RATIO: f32 = 4.0;
+/// Absolute minimum RMS for a speech candidate (≈ -54 dBFS).
+const GATE_MIN_RMS: f32 = 0.002;
+/// Maximum boost applied to quiet speech (≈ +30 dB).
+const GATE_MAX_GAIN: f32 = 32.0;
+
+/// Windows (600 ms each) the gate stays open after the last speech-like window,
+/// so short pauses between words don't chop an utterance into fragments.
+const GATE_HANGOVER_WINDOWS: u8 = 2;
+
+/// Adaptive noise-floor gate. Returns the window to feed to the VAD: silence
+/// for noise, or a level-aligned copy for speech candidates. `floor` is the
+/// per-source running noise-floor estimate (falls fast, rises slowly) and
+/// `hang` the remaining hang-over windows.
+fn speech_gate(window: &[f32], window_rms: f32, floor: &mut f32, hang: &mut u8) -> Vec<f32> {
+    let measured = window_rms.max(1e-5);
+    if measured < *floor {
+        *floor = measured;
+    } else {
+        // Rise slowly so a long stretch of speech doesn't become the "floor".
+        *floor = (*floor * 1.005).min(measured);
+    }
+    let is_speech_candidate = measured > GATE_MIN_RMS && measured > *floor * GATE_FLOOR_RATIO;
+    if is_speech_candidate {
+        *hang = GATE_HANGOVER_WINDOWS;
+    } else if *hang > 0 {
+        *hang -= 1;
+    } else {
+        return vec![0.0; window.len()];
+    }
+    let gain = (GATE_TARGET_RMS / measured).clamp(1.0, GATE_MAX_GAIN);
+    if (gain - 1.0).abs() < 0.05 {
+        return window.to_vec();
+    }
+    window.iter().map(|s| (s * gain).clamp(-1.0, 1.0)).collect()
+}
+
+/// Normalized cross-correlation above which a mic window is considered speaker bleed.
+const BLEED_CORR_THRESHOLD: f32 = 0.35;
+/// Largest mic↔system delay considered when looking for bleed.
+const BLEED_MAX_LAG_MS: usize = 250;
+/// Analysis rate for the correlation (decimated from the capture rate).
+const BLEED_ANALYSIS_RATE: usize = 8000;
+
+/// Peak normalized cross-correlation between the mic and system windows over
+/// lags of ±BLEED_MAX_LAG_MS, computed on 8 kHz decimated copies (cheap enough
+/// to run every 600 ms window even in debug builds).
+fn bleed_correlation(mic: &[f32], sys: &[f32], sample_rate: u32) -> f32 {
+    let factor = (sample_rate as usize / BLEED_ANALYSIS_RATE).max(1);
+    let decimate = |x: &[f32]| -> Vec<f32> {
+        x.chunks(factor)
+            .map(|c| c.iter().sum::<f32>() / c.len() as f32)
+            .collect()
+    };
+    let m = decimate(mic);
+    let s = decimate(sys);
+    let n = m.len().min(s.len());
+    if n < BLEED_ANALYSIS_RATE / 10 {
+        return 0.0;
+    }
+    let (m, s) = (&m[..n], &s[..n]);
+    let energy = |x: &[f32]| x.iter().map(|v| v * v).sum::<f32>();
+    let (em, es) = (energy(m), energy(s));
+    if em <= 1e-9 || es <= 1e-9 {
+        return 0.0;
+    }
+    let norm = (em * es).sqrt();
+    let max_lag = (BLEED_MAX_LAG_MS * BLEED_ANALYSIS_RATE / 1000).min(n - 1);
+    let mut best = 0.0f32;
+    // Coarse lag step keeps this O(n * lags / 2); bleed correlation peaks are wide
+    // enough at 8 kHz that a 2-sample step doesn't miss them.
+    let mut lag = 0usize;
+    while lag <= max_lag {
+        // mic delayed relative to system (the physical case) …
+        let dot_a: f32 = m[lag..].iter().zip(s.iter()).map(|(a, b)| a * b).sum();
+        // … and the reverse, in case capture latencies differ the other way.
+        let dot_b: f32 = s[lag..].iter().zip(m.iter()).map(|(a, b)| a * b).sum();
+        let c = dot_a.abs().max(dot_b.abs()) / norm;
+        if c > best {
+            best = c;
+        }
+        lag += 2;
+    }
+    best
+}
+
+#[inline]
+fn rms(samples: &[f32]) -> f32 {
+    if samples.is_empty() {
+        return 0.0;
+    }
+    (samples.iter().map(|s| s * s).sum::<f32>() / samples.len() as f32).sqrt()
+}
+
 struct AudioMixerRingBuffer {
     mic_buffer: VecDeque<f32>,
     system_buffer: VecDeque<f32>,
@@ -307,9 +411,20 @@ impl AudioCapture {
 
             (ns, hpf, norm)
         } else {
-            // System audio: no enhancement needed
-            info!("ℹ️ System audio '{}' captured raw (no enhancement)", device.name);
-            (None, None, None)
+            // System audio: only DC/rumble removal. Loopback/monitor PCMs (PipeWire's
+            // ALSA plugin in particular) can carry a large DC offset, which skews the
+            // mixer, the crosstalk gate and voice detection.
+            // Monitor/loopback level depends on the user's volume setting, so bring it
+            // to the same -23 LUFS target as the mic (gain is capped and gated).
+            let norm = match LoudnessNormalizer::new(1, TARGET_SAMPLE_RATE) {
+                Ok(n) => Some(n),
+                Err(e) => {
+                    warn!("⚠️ Failed to create normalizer for system audio: {}", e);
+                    None
+                }
+            };
+            info!("ℹ️ System audio '{}': high-pass + loudness normalization (no noise suppression)", device.name);
+            (None, Some(HighPassFilter::new(TARGET_SAMPLE_RATE, 80.0)), norm)
         };
 
         // CRITICAL FIX: Initialize persistent resampler to preserve energy across chunks
@@ -511,13 +626,14 @@ impl AudioCapture {
         // AUDIO ENHANCEMENT PIPELINE (Microphone Only)
         // Processing order is critical: high-pass → noise suppression → normalization
         // This ensures noise is removed before being amplified by the normalizer
-        if matches!(self.device_type, DeviceType::Microphone) {
-            // STEP 1: Apply high-pass filter to remove low-frequency rumble (< 80 Hz)
-            if let Ok(mut hpf_lock) = self.high_pass_filter.lock() {
-                if let Some(ref mut filter) = *hpf_lock {
-                    mono_data = filter.process(&mono_data);
-                }
+        // STEP 1 (all sources): high-pass to remove DC offset and rumble (< 80 Hz)
+        if let Ok(mut hpf_lock) = self.high_pass_filter.lock() {
+            if let Some(ref mut filter) = *hpf_lock {
+                mono_data = filter.process(&mono_data);
             }
+        }
+
+        if matches!(self.device_type, DeviceType::Microphone) {
 
             // STEP 2: Apply RNNoise noise suppression (10-15 dB reduction) - CONDITIONAL
             if super::ffmpeg_mixer::RNNOISE_APPLY_ENABLED {
@@ -555,19 +671,12 @@ impl AudioCapture {
                 }
             }
 
-            // STEP 3: Apply EBU R128 normalization (professional loudness standard)
-            if let Ok(mut normalizer_lock) = self.normalizer.lock() {
-                if let Some(ref mut normalizer) = *normalizer_lock {
-                    mono_data = normalizer.normalize_loudness(&mono_data);
+        }
 
-                    // Log normalization occasionally for debugging
-                    let chunk_id = self.chunk_counter.load(std::sync::atomic::Ordering::SeqCst);
-                    if chunk_id % 200 == 0 && !mono_data.is_empty() {
-                        let rms = (mono_data.iter().map(|&x| x * x).sum::<f32>() / mono_data.len() as f32).sqrt();
-                        let peak = mono_data.iter().map(|&x| x.abs()).fold(0.0f32, f32::max);
-                        debug!("🎤 After normalization chunk {}: RMS={:.4}, Peak={:.4}", chunk_id, rms, peak);
-                    }
-                }
+        // STEP 3 (all sources): EBU R128 loudness normalization (capped, gated)
+        if let Ok(mut normalizer_lock) = self.normalizer.lock() {
+            if let Some(ref mut normalizer) = *normalizer_lock {
+                mono_data = normalizer.normalize_loudness(&mono_data);
             }
         }
 
@@ -601,6 +710,15 @@ impl AudioCapture {
         //         warn!("⚠️ System audio producing ZERO audio - check permissions or hardware!");
         //     }
         // }
+
+        // Periodic per-source level report (every ~200 chunks ≈ a few seconds)
+        if chunk_id % 200 == 0 && !mono_data.is_empty() {
+            let n = mono_data.len() as f32;
+            let mean = mono_data.iter().sum::<f32>() / n;
+            let rms = (mono_data.iter().map(|&x| x * x).sum::<f32>() / n).sqrt();
+            let peak = mono_data.iter().map(|&x| x.abs()).fold(0.0f32, f32::max);
+            info!("📈 [{:?}] chunk {}: rms={:.4} peak={:.4} dc={:.4}", self.device_type, chunk_id, rms, peak, mean);
+        }
 
         // Use global recording timestamp for proper synchronization
         let timestamp = self.state.get_recording_duration().unwrap_or(0.0);
@@ -681,7 +799,16 @@ pub struct AudioPipeline {
     receiver: mpsc::UnboundedReceiver<AudioChunk>,
     transcription_sender: mpsc::UnboundedSender<AudioChunk>,
     state: Arc<RecordingState>,
-    vad_processor: ContinuousVadProcessor,
+    /// Separate VAD processors per source so transcripts can be attributed to
+    /// the local user ("mic") or the remote parties ("system").
+    mic_vad: ContinuousVadProcessor,
+    sys_vad: ContinuousVadProcessor,
+    /// Adaptive noise-floor trackers (per source) for the pre-VAD speech gate
+    mic_floor: f32,
+    sys_floor: f32,
+    /// Hang-over counters: windows left to keep the gate open after speech
+    mic_hang: u8,
+    sys_hang: u8,
     sample_rate: u32,
     chunk_id_counter: u64,
     // Performance optimization: reduce logging frequency
@@ -724,18 +851,22 @@ impl AudioPipeline {
         // This bridges natural pauses without excessive fragmentation
         // For mac os core audio, 900ms, for windows 400ms seems good
 
-        let redemption_time = if cfg!(target_os = "macos") { 400 } else { 400 };
+        // 700ms bridges natural pauses so recognizers see whole phrases (better accuracy),
+        // while keeping live latency under a second after the speaker stops.
+        let redemption_time = if cfg!(target_os = "macos") { 700 } else { 700 };
 
-        let vad_processor = match ContinuousVadProcessor::new(sample_rate, redemption_time) {
+        let make_vad = |label: &str| match ContinuousVadProcessor::new(sample_rate, redemption_time) {
             Ok(processor) => {
-                info!("VAD-driven pipeline: VAD segments will be sent directly to Whisper (no time-based accumulation)");
+                info!("VAD-driven pipeline ({}): VAD segments will be sent directly to the transcription engine", label);
                 processor
             }
             Err(e) => {
-                error!("Failed to create VAD processor: {}", e);
+                error!("Failed to create {} VAD processor: {}", label, e);
                 panic!("VAD processor creation failed: {}", e);
             }
         };
+        let mic_vad = make_vad("mic");
+        let sys_vad = make_vad("system");
 
         // Initialize professional audio mixing components
         let ring_buffer = AudioMixerRingBuffer::new(sample_rate);
@@ -748,7 +879,12 @@ impl AudioPipeline {
             receiver,
             transcription_sender,
             state,
-            vad_processor,
+            mic_vad,
+            sys_vad,
+            mic_floor: 0.01,
+            sys_floor: 0.01,
+            mic_hang: 0,
+            sys_hang: 0,
             sample_rate,
             chunk_id_counter: 0,
             // Performance optimization: reduce logging frequency
@@ -831,38 +967,40 @@ impl AudioPipeline {
                             // Previous 2x gain was causing excessive limiting/distortion
                             let mixed_with_gain = mixed_clean;
 
-                            // STEP 3: Send mixed audio for transcription (VAD + Whisper)
-                            match self.vad_processor.process_audio(&mixed_with_gain) {
-                                Ok(speech_segments) => {
-                                    for segment in speech_segments {
-                                        let duration_ms = segment.end_timestamp_ms - segment.start_timestamp_ms;
+                            // STEP 3: Run VAD separately on each source so every transcript
+                            // segment carries its origin (mic = "You", system = "Them").
+                            // Both VADs consume identical window counts, so their internal
+                            // sample-based timelines stay aligned with each other.
+                            let mic_rms = rms(&mic_window);
+                            let sys_rms = rms(&sys_window);
+                            // Crosstalk gate: speaker → mic bleed is a delayed copy of the
+                            // system signal, so a high cross-correlation (any lag within
+                            // ±BLEED_MAX_LAG_MS) means the mic window is the remote party, not
+                            // the user. Double-talk keeps correlation low and passes through.
+                            let mic_is_bleed = sys_rms > 1e-3
+                                && mic_rms > 1e-4
+                                && (mic_rms < sys_rms * MIC_BLEED_RATIO
+                                    || bleed_correlation(&mic_window, &sys_window, self.sample_rate) > BLEED_CORR_THRESHOLD);
+                            // Pre-VAD gate + level alignment: windows that don't rise clearly
+                            // above each source's own noise floor are fed to the VAD as
+                            // silence (so faint noise never becomes a "segment"), and
+                            // speech-like windows are scaled to a consistent level so the
+                            // VAD and recognizer see quiet remote audio as well as a loud mic.
+                            let mic_input = if mic_is_bleed {
+                                self.mic_hang = 0;
+                                vec![0.0; mic_window.len()]
+                            } else {
+                                speech_gate(&mic_window, mic_rms, &mut self.mic_floor, &mut self.mic_hang)
+                            };
+                            let sys_input = speech_gate(&sys_window, sys_rms, &mut self.sys_floor, &mut self.sys_hang);
 
-                                        if segment.samples.len() >= 800 {  // Minimum 50ms at 16kHz - matches Parakeet capability
-                                            info!("📤 Sending VAD segment: {:.1}ms, {} samples",
-                                                  duration_ms, segment.samples.len());
-
-                                            let transcription_chunk = AudioChunk {
-                                                data: segment.samples,
-                                                sample_rate: 16000,
-                                                timestamp: segment.start_timestamp_ms / 1000.0,
-                                                chunk_id: self.chunk_id_counter,
-                                                device_type: DeviceType::Microphone,  // Mixed audio
-                                            };
-
-                                            if let Err(e) = self.transcription_sender.send(transcription_chunk) {
-                                                warn!("Failed to send VAD segment: {}", e);
-                                            } else {
-                                                self.chunk_id_counter += 1;
-                                            }
-                                        } else {
-                                            debug!("⏭️ Dropping short VAD segment: {:.1}ms ({} samples < 800)",
-                                                   duration_ms, segment.samples.len());
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    warn!("⚠️ VAD error: {}", e);
-                                }
+                            match self.mic_vad.process_audio(&mic_input) {
+                                Ok(segments) => self.send_segments(segments, DeviceType::Microphone),
+                                Err(e) => warn!("⚠️ Mic VAD error: {}", e),
+                            }
+                            match self.sys_vad.process_audio(&sys_input) {
+                                Ok(segments) => self.send_segments(segments, DeviceType::System),
+                                Err(e) => warn!("⚠️ System VAD error: {}", e),
                             }
 
                             // STEP 4: Send mixed audio for recording (WAV file)
@@ -900,42 +1038,53 @@ impl AudioPipeline {
     fn flush_remaining_audio(&mut self) -> Result<()> {
         info!("Flushing remaining audio from pipeline (processed {} chunks)", self.processed_chunks);
 
-        // Flush any remaining audio from VAD processor and send segments to transcription
-        match self.vad_processor.flush() {
-            Ok(final_segments) => {
-                for segment in final_segments {
-                    let duration_ms = segment.end_timestamp_ms - segment.start_timestamp_ms;
-
-                    // Send segments >= 50ms (800 samples at 16kHz) - matches main pipeline filter
-                    if segment.samples.len() >= 800 {
-                        info!("📤 Sending final VAD segment to Whisper: {:.1}ms duration, {} samples",
-                              duration_ms, segment.samples.len());
-
-                        let transcription_chunk = AudioChunk {
-                            data: segment.samples,
-                            sample_rate: 16000,
-                            timestamp: segment.start_timestamp_ms / 1000.0,
-                            chunk_id: self.chunk_id_counter,
-                            device_type: DeviceType::Microphone,
-                        };
-
-                        if let Err(e) = self.transcription_sender.send(transcription_chunk) {
-                            warn!("Failed to send final VAD segment: {}", e);
-                        } else {
-                            self.chunk_id_counter += 1;
-                        }
-                    } else {
-                        info!("⏭️ Skipping short final segment: {:.1}ms ({} samples < 800)",
-                              duration_ms, segment.samples.len());
-                    }
-                }
-            }
-            Err(e) => {
-                warn!("Failed to flush VAD processor: {}", e);
-            }
+        match self.mic_vad.flush() {
+            Ok(segments) => self.send_segments(segments, DeviceType::Microphone),
+            Err(e) => warn!("Failed to flush mic VAD processor: {}", e),
+        }
+        match self.sys_vad.flush() {
+            Ok(segments) => self.send_segments(segments, DeviceType::System),
+            Err(e) => warn!("Failed to flush system VAD processor: {}", e),
         }
 
         Ok(())
+    }
+
+    /// Forward VAD speech segments to the transcription worker, tagged with their source.
+    fn send_segments(&mut self, segments: Vec<super::vad::SpeechSegment>, device_type: DeviceType) {
+        for segment in segments {
+            let duration_ms = segment.end_timestamp_ms - segment.start_timestamp_ms;
+
+            // Near-silent segments (VAD false positives on room noise) only produce hallucinations
+            if rms(&segment.samples) < MIN_SEGMENT_RMS {
+                debug!("⏭️ Dropping near-silent VAD segment ({:?}): {:.1}ms", device_type, duration_ms);
+                continue;
+            }
+
+            // Minimum 50ms at 16kHz - matches Parakeet capability
+            if segment.samples.len() < 800 {
+                debug!("⏭️ Dropping short VAD segment ({:?}): {:.1}ms ({} samples < 800)",
+                       device_type, duration_ms, segment.samples.len());
+                continue;
+            }
+
+            info!("📤 Sending VAD segment ({:?}): {:.1}ms, {} samples",
+                  device_type, duration_ms, segment.samples.len());
+
+            let transcription_chunk = AudioChunk {
+                data: segment.samples,
+                sample_rate: 16000,
+                timestamp: segment.start_timestamp_ms / 1000.0,
+                chunk_id: self.chunk_id_counter,
+                device_type: device_type.clone(),
+            };
+
+            if let Err(e) = self.transcription_sender.send(transcription_chunk) {
+                warn!("Failed to send VAD segment: {}", e);
+            } else {
+                self.chunk_id_counter += 1;
+            }
+        }
     }
 
 }
@@ -1076,5 +1225,51 @@ impl AudioPipelineManager {
 impl Default for AudioPipelineManager {
     fn default() -> Self {
         Self::new()
+    }
+}
+#[cfg(test)]
+mod bleed_tests {
+    use super::*;
+
+    fn tone_burst(n: usize, seed: u32) -> Vec<f32> {
+        // deterministic pseudo-speech: sum of a few tones with noise
+        let mut x = seed;
+        (0..n)
+            .map(|i| {
+                x = x.wrapping_mul(1664525).wrapping_add(1013904223);
+                let noise = ((x >> 9) as f32 / (1u32 << 23) as f32) - 1.0;
+                let t = i as f32 / 48000.0;
+                0.3 * (2.0 * std::f32::consts::PI * 220.0 * t).sin()
+                    + 0.2 * (2.0 * std::f32::consts::PI * 1370.0 * t).sin()
+                    + 0.1 * noise
+            })
+            .collect()
+    }
+
+    #[test]
+    fn delayed_copy_is_detected_as_bleed() {
+        let n = 28800; // 600 ms at 48 kHz
+        let sys = tone_burst(n, 7);
+        // mic = system delayed by 40 ms and attenuated
+        let delay = 48 * 40;
+        let mut mic = vec![0.0f32; n];
+        for i in delay..n {
+            mic[i] = 0.3 * sys[i - delay];
+        }
+        let c = bleed_correlation(&mic, &sys, 48000);
+        assert!(c > BLEED_CORR_THRESHOLD, "correlation {} too low", c);
+    }
+
+    #[test]
+    fn independent_signals_are_not_bleed() {
+        let n = 28800;
+        let sys = tone_burst(n, 7);
+        let mic = tone_burst(n, 99999)
+            .iter()
+            .enumerate()
+            .map(|(i, v)| v * (2.0 * std::f32::consts::PI * 330.0 * i as f32 / 48000.0).sin())
+            .collect::<Vec<_>>();
+        let c = bleed_correlation(&mic, &sys, 48000);
+        assert!(c < BLEED_CORR_THRESHOLD, "correlation {} unexpectedly high", c);
     }
 }

@@ -1,32 +1,69 @@
 import React from "react";
-import Image from "next/image";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { VisuallyHidden } from "./ui/visually-hidden";
 import { About } from "./About";
+import { APP_NAME, APP_SHORT_NAME } from "@/lib/brand";
 
 interface LogoProps {
     isCollapsed: boolean;
 }
 
+/**
+ * Brand mark: a rounded square in the SkillCat orange with a geometric
+ * "notes + waveform" glyph in currentColor (1.5px strokes, no emoji).
+ */
+export function BrandMark({ size = 36, className = "" }: { size?: number; className?: string }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 40 40"
+      className={className}
+      aria-hidden="true"
+      style={{ filter: "drop-shadow(0 0 10px rgba(240,85,35,.35))" }}
+    >
+      <defs>
+        <radialGradient id="sc-mark-fill" cx="30%" cy="25%" r="90%">
+          <stop offset="0%" stopColor="#F05523" />
+          <stop offset="100%" stopColor="#C43A12" />
+        </radialGradient>
+      </defs>
+      <rect x="2" y="2" width="36" height="36" rx="10" fill="url(#sc-mark-fill)" />
+      <g fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        {/* note lines */}
+        <path d="M11 13.5h12" />
+        <path d="M11 19.5h8" />
+        <path d="M11 25.5h6" />
+        {/* waveform */}
+        <path d="M21 25.5v-3" />
+        <path d="M24.5 27.5v-7" />
+        <path d="M28 29v-10" />
+      </g>
+    </svg>
+  );
+}
+
 const Logo = React.forwardRef<HTMLButtonElement, LogoProps>(({ isCollapsed }, ref) => {
   return (
     <Dialog aria-describedby={undefined}>
-      {isCollapsed ? (
-        <DialogTrigger asChild>
-          <button ref={ref} className="flex items-center justify-start mb-2 cursor-pointer bg-transparent border-none p-0 hover:opacity-80 transition-opacity">
-            <Image src="/logo-collapsed.png" alt="Logo" width={40} height={32} />
-          </button>
-        </DialogTrigger>
-      ) : (
-        <DialogTrigger asChild>
-          <span className="text-lg text-center border rounded-full bg-blue-50 border-white font-semibold text-gray-700 mb-2 block items-center cursor-pointer hover:opacity-80 transition-opacity">
-            <span>Meetily</span>
-          </span>
-        </DialogTrigger>
-      )}
+      <DialogTrigger asChild>
+        <button
+          ref={ref}
+          title={APP_NAME}
+          className={`flex items-center gap-3 mb-2 cursor-pointer bg-transparent border-none p-0 hover:opacity-85 transition-opacity ${isCollapsed ? "justify-center" : "justify-start"}`}
+        >
+          <BrandMark size={isCollapsed ? 38 : 32} />
+          {!isCollapsed && (
+            <span className="flex flex-col leading-none text-left">
+              <span className="sc-eyebrow" style={{ fontSize: 9 }}>SkillCat</span>
+              <span className="text-base font-bold text-ink-strong tracking-tight">{APP_SHORT_NAME}</span>
+            </span>
+          )}
+        </button>
+      </DialogTrigger>
       <DialogContent>
         <VisuallyHidden>
-          <DialogTitle>About Meetily</DialogTitle>
+          <DialogTitle>About {APP_NAME}</DialogTitle>
         </VisuallyHidden>
         <About />
       </DialogContent>

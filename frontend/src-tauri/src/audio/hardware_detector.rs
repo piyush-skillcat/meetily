@@ -108,13 +108,20 @@ impl HardwareProfile {
     /// Detect available system memory in GB
     fn detect_memory_gb() -> u8 {
         // Simple memory detection - could be enhanced with system-specific calls
-        match std::env::var("MEMORY_GB") {
-            Ok(mem_str) => mem_str.parse().unwrap_or(8),
-            Err(_) => {
-                // Default estimates based on common configurations
-                8 // Conservative default
+        if let Ok(mem_str) = std::env::var("MEMORY_GB") {
+            if let Ok(v) = mem_str.parse::<u8>() {
+                return v;
             }
         }
+        // Measure real memory with sysinfo
+        let mut sys = sysinfo::System::new();
+        sys.refresh_memory();
+        let total_bytes = sys.total_memory();
+        if total_bytes > 0 {
+            let gb = (total_bytes as f64 / (1024.0 * 1024.0 * 1024.0)).round();
+            return gb.clamp(1.0, 255.0) as u8;
+        }
+        8 // Conservative default
     }
 
     /// Calculate performance tier based on hardware
@@ -142,7 +149,10 @@ impl HardwareProfile {
                 }
             }
             GpuType::None => {
-                if cpu_cores >= 8 && memory_gb >= 16 {
+                // Modern many-core CPUs handle beam search comfortably.
+                if cpu_cores >= 12 && memory_gb >= 16 {
+                    PerformanceTier::High
+                } else if cpu_cores >= 8 && memory_gb >= 16 {
                     PerformanceTier::Medium
                 } else {
                     PerformanceTier::Low
@@ -167,7 +177,11 @@ impl HardwareProfile {
     fn has_vulkan_support() -> bool {
         if std::env::var("VULKAN_SDK").is_ok() ||
             std::path::Path::new("/usr/lib/x86_64-linux-gnu/libvulkan.so").exists() ||
-            std::path::Path::new("/usr/lib/libvulkan.so").exists()
+            std::path::Path::new("/usr/lib/x86_64-linux-gnu/libvulkan.so.1").exists() ||
+            std::path::Path::new("/usr/lib64/libvulkan.so").exists() ||
+            std::path::Path::new("/usr/lib64/libvulkan.so.1").exists() ||
+            std::path::Path::new("/usr/lib/libvulkan.so").exists() ||
+            std::path::Path::new("/usr/lib/libvulkan.so.1").exists()
         {
             return true;
         }
@@ -222,28 +236,29 @@ impl HardwareProfile {
                     beam_size: 5,  // Maximum quality
                     temperature: 0.1,
                     use_gpu: self.has_gpu_acceleration,
-                    max_threads: Some(self.cpu_cores.min(8) as usize),
+                    max_threads: Some(self.cpu_cores.min(16) as usize),
                     chunk_size_preference: ChunkSizePreference::Quality,
                 },
                 PerformanceTier::High => AdaptiveWhisperConfig {
-                    beam_size: 3,  // High quality
+                    // Beam search is 3-5x slower on CPU; keep it narrow without a GPU
+                    beam_size: if self.has_gpu_acceleration { 5 } else { 2 },
                     temperature: 0.2,
                     use_gpu: self.has_gpu_acceleration,
-                    max_threads: Some(self.cpu_cores.min(6) as usize),
+                    max_threads: Some(self.cpu_cores.min(12) as usize),
                     chunk_size_preference: ChunkSizePreference::Balanced,
                 },
                 PerformanceTier::Medium => AdaptiveWhisperConfig {
-                    beam_size: 2,  // Balanced
+                    beam_size: if self.has_gpu_acceleration { 3 } else { 2 },  // Balanced
                     temperature: 0.3,
                     use_gpu: self.has_gpu_acceleration,
-                    max_threads: Some(self.cpu_cores.min(4) as usize),
+                    max_threads: Some(self.cpu_cores.min(8) as usize),
                     chunk_size_preference: ChunkSizePreference::Balanced,
                 },
                 PerformanceTier::Low => AdaptiveWhisperConfig {
                     beam_size: 1,  // Fast processing
                     temperature: 0.4,
                     use_gpu: false, // Force CPU to avoid GPU overhead on weak hardware
-                    max_threads: Some(2),
+                    max_threads: Some(self.cpu_cores.max(2).min(4) as usize),
                     chunk_size_preference: ChunkSizePreference::Fast,
                 },
             }

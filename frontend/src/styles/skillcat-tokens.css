@@ -1,0 +1,166 @@
+/* ──────────────────────────────────────────────────────────────────
+   SkillCat Notesify — token layer.
+   Values come from styles/{core,light,dark}.tokens.json (SkillCat design
+   system). Theme = data-theme="light|dark" on <html> (set by ThemeProvider).
+
+   Two layers:
+   1. --sc-*  semantic tokens (surface / text / border / status / accent).
+   2. Tailwind bridge: the app's existing utilities (bg-gray-50, text-gray-700,
+      bg-white, text-blue-600 …) are remapped in tailwind.config.js to the
+      --tw-* RGB triplets below, so every component follows the theme without
+      per-file edits. New code should prefer the semantic names.
+   ────────────────────────────────────────────────────────────────── */
+
+:root {
+  --sc-font-display: var(--font-fira-sans), "Fira Sans", system-ui, sans-serif;
+  --sc-font-mono: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --sc-primary: #F05523;
+  --sc-primary-hover: #E44515;
+  --sc-primary-rgb: 240 85 35;
+  --sc-radius-xs: 4px; --sc-radius-sm: 8px; --sc-radius-md: 10px; --sc-radius-lg: 16px;
+  --sc-radius-xl: 20px; --sc-radius-pill: 999px;
+  --sc-dur: 200ms; --sc-ease: cubic-bezier(.22, 1, .36, 1);
+}
+
+/* ── LIGHT (warm sand) ── default so SSR/static export never flashes unstyled */
+:root, [data-theme="light"] {
+  --sc-ink-100: #2B2722; --sc-ink-200: #403B33; --sc-ink-300: #797161; --sc-ink-400: #938A78;
+  --sc-ink-500: #A99F8C; --sc-ink-700: #DBD3C4; --sc-ink-800: #EAE3D7; --sc-ink-900: #F4EFE7;
+  --sc-surface-0: #ECE7DE; --sc-surface-1: #F6F2EB; --sc-surface-2: #FFFFFF; --sc-surface-sunken: #E8E1D6;
+  --sc-border-hairline: #E4DCD0; --sc-border-subtle: rgba(43, 39, 34, .08);
+  --sc-text-strong: var(--sc-ink-100); --sc-text-body: var(--sc-ink-200);
+  --sc-text-muted: var(--sc-ink-300); --sc-text-disabled: var(--sc-ink-500);
+  --sc-success: #1E8A56; --sc-info: #356FAE; --sc-warning: #C77D0E; --sc-danger: #CE2E39; --sc-accent: #7257C0;
+  --sc-success-bg: #DDF0E5; --sc-info-bg: #DCE8F4; --sc-warning-bg: #FAEACB; --sc-danger-bg: #FBE0E2; --sc-accent-bg: #E8E1F7;
+  --sc-shadow-sm: 0 1px 3px rgba(60, 48, 36, .08); --sc-shadow-md: 0 4px 14px rgba(60, 48, 36, .1);
+  --sc-cta-fill: radial-gradient(rgba(240, 85, 35, 1) 28%, rgba(228, 69, 21, 1) 100%);
+  --sc-cta-shadow: 0 0 0 1px rgba(228, 69, 21, .45), inset 0 0 16px rgba(138, 49, 20, .5), 0 4px 12px rgba(240, 85, 35, .22);
+  --sc-glow: radial-gradient(60% 60% at 18% 12%, rgba(240, 85, 35, .1), transparent 60%);
+  color-scheme: light;
+
+  /* Tailwind bridge (RGB triplets so /opacity modifiers keep working) */
+  --tw-white: 255 255 255;          /* surface.2  */
+  --tw-black: 43 39 34;             /* ink.100    */
+  --tw-g-50: 246 242 235;           /* surface.1  */
+  --tw-g-100: 244 239 231;          /* ink.900    */
+  --tw-g-200: 228 220 208;          /* border.hairline */
+  --tw-g-300: 219 211 196;          /* ink.700    */
+  --tw-g-400: 169 159 140;          /* ink.500 (disabled) */
+  --tw-g-500: 121 113 97;           /* ink.300 (muted) */
+  --tw-g-600: 100 92 78;            /* between muted and body */
+  --tw-g-700: 64 59 51;             /* ink.200 (body) */
+  --tw-g-800: 52 47 41;             /* near strong */
+  --tw-g-900: 43 39 34;             /* ink.100 (strong) */
+  --tw-p-50: 253 240 235;           /* primary tint */
+  --tw-p-100: 251 226 215;
+  --tw-p-200: 247 196 176;
+  --tw-p-300: 244 160 128;
+  --tw-p-400: 242 120 76;
+  --tw-p-500: 240 85 35;            /* primary */
+  --tw-p-600: 228 69 21;            /* primary-hover */
+  --tw-p-700: 196 58 18;
+  --tw-p-800: 138 49 20;            /* burnt */
+  --tw-p-900: 102 36 14;
+  --tw-success: 30 138 86; --tw-success-bg: 221 240 229;
+  --tw-danger: 206 46 57; --tw-danger-bg: 251 224 226;
+  --tw-warning: 199 125 14; --tw-warning-bg: 250 234 203;
+  --tw-info: 53 111 174; --tw-info-bg: 220 232 244;
+}
+
+/* ── DARK (near-black) ── */
+[data-theme="dark"] {
+  --sc-ink-100: #F0F0F0; --sc-ink-200: #D9D9D9; --sc-ink-300: #A8A8A8; --sc-ink-400: #939393;
+  --sc-ink-500: #737373; --sc-ink-700: #404040; --sc-ink-800: #262626; --sc-ink-900: #1A1A1A;
+  --sc-surface-0: #0D0D0D; --sc-surface-1: #171717; --sc-surface-2: #1E1D1D; --sc-surface-sunken: #080808;
+  --sc-border-hairline: #484747; --sc-border-subtle: rgba(255, 255, 255, .06);
+  --sc-text-strong: var(--sc-ink-100); --sc-text-body: var(--sc-ink-200);
+  --sc-text-muted: var(--sc-ink-300); --sc-text-disabled: var(--sc-ink-500);
+  --sc-success: #14B867; --sc-info: #1E90FF; --sc-warning: #FFC524; --sc-danger: #FF1F31; --sc-accent: #6944FF;
+  --sc-success-bg: rgba(20, 184, 103, .2); --sc-info-bg: rgba(30, 144, 255, .2);
+  --sc-warning-bg: rgba(255, 197, 36, .2); --sc-danger-bg: rgba(255, 31, 49, .2); --sc-accent-bg: rgba(105, 68, 255, .2);
+  --sc-shadow-sm: 0 2px 8px rgba(0, 0, 0, .3); --sc-shadow-md: 0 4px 12px rgba(0, 0, 0, .35);
+  --sc-cta-fill: radial-gradient(rgba(228, 69, 21, .75) 29%, rgba(138, 49, 20, .75) 100%), rgba(13, 13, 13, .75);
+  --sc-cta-shadow: 0 0 0 1px rgba(240, 85, 35, .4), inset 0 0 16px rgba(138, 49, 20, .75);
+  --sc-glow: radial-gradient(60% 60% at 18% 12%, rgba(240, 85, 35, .16), transparent 60%);
+  color-scheme: dark;
+
+  --tw-white: 30 29 29;             /* surface.2 */
+  --tw-black: 240 240 240;          /* ink.100   */
+  --tw-g-50: 23 23 23;              /* surface.1 */
+  --tw-g-100: 26 26 26;             /* ink.900   */
+  --tw-g-200: 38 38 38;             /* ink.800   */
+  --tw-g-300: 64 64 64;             /* ink.700   */
+  --tw-g-400: 115 115 115;          /* ink.500   */
+  --tw-g-500: 147 147 147;          /* ink.400   */
+  --tw-g-600: 168 168 168;          /* ink.300 (muted) */
+  --tw-g-700: 217 217 217;          /* ink.200 (body) */
+  --tw-g-800: 232 232 232;
+  --tw-g-900: 240 240 240;          /* ink.100 (strong) */
+  --tw-p-50: 46 24 16;              /* primary tint on dark */
+  --tw-p-100: 66 30 18;
+  --tw-p-200: 102 36 14;
+  --tw-p-300: 138 49 20;
+  --tw-p-400: 196 58 18;
+  --tw-p-500: 240 85 35;            /* primary */
+  --tw-p-600: 228 69 21;            /* primary-hover (used by bg-blue-600 → keep bright on dark) */
+  --tw-p-700: 242 120 76;
+  --tw-p-800: 244 160 128;
+  --tw-p-900: 247 196 176;
+  --tw-success: 20 184 103; --tw-success-bg: 16 52 34;
+  --tw-danger: 255 31 49; --tw-danger-bg: 61 18 22;
+  --tw-warning: 255 197 36; --tw-warning-bg: 61 48 14;
+  --tw-info: 30 144 255; --tw-info-bg: 15 42 70;
+}
+
+/* ── base ── */
+html, body {
+  background: var(--sc-surface-0);
+  color: var(--sc-text-body);
+  font-family: var(--sc-font-display);
+  -webkit-font-smoothing: antialiased;
+}
+
+.sc-mono { font-family: var(--sc-font-mono); }
+.sc-eyebrow {
+  font-family: var(--sc-font-display); font-weight: 900; font-size: 11px; text-transform: uppercase;
+  letter-spacing: .12em; color: var(--sc-text-muted);
+}
+
+/* Primary call-to-action: the signature radial fill with inner burnt-orange shadow */
+.sc-cta {
+  color: #fff; background: var(--sc-cta-fill); box-shadow: var(--sc-cta-shadow);
+  border: 0; font-weight: 700; transition: filter var(--sc-dur) var(--sc-ease);
+}
+.sc-cta:hover { filter: brightness(1.08); }
+.sc-cta:disabled { filter: none; background: var(--sc-ink-700); color: var(--sc-text-disabled); box-shadow: none; }
+
+/* Status pills */
+.sc-pill { display: inline-flex; align-items: center; gap: 6px; border-radius: var(--sc-radius-pill); padding: 3px 10px; font-size: 12px; font-weight: 600; }
+.sc-pill-success { background: var(--sc-success-bg); color: var(--sc-success); }
+.sc-pill-info { background: var(--sc-info-bg); color: var(--sc-info); }
+.sc-pill-warning { background: var(--sc-warning-bg); color: var(--sc-warning); }
+.sc-pill-danger { background: var(--sc-danger-bg); color: var(--sc-danger); }
+
+/* Focus: 2px primary ring at 40% */
+:focus-visible { outline: none; box-shadow: 0 0 0 2px rgb(var(--sc-primary-rgb) / .4); }
+
+/* Subtle corner glow on the main canvas (hero rule: offset, never centered) */
+.sc-canvas { background-image: var(--sc-glow); }
+
+/* BlockNote editors follow the theme (both themes use the app surface, not BlockNote's own) */
+.bn-container, .bn-editor, .ProseMirror { background: transparent !important; color: var(--sc-text-body) !important; font-family: var(--sc-font-display) !important; }
+.bn-container h1, .bn-container h2, .bn-container h3 { color: var(--sc-text-strong) !important; }
+.bn-container [data-content-type="heading"] { color: var(--sc-text-strong) !important; }
+.bn-container .bn-inline-content code, .bn-container code { font-family: var(--sc-font-mono) !important; }
+.bn-container [class*="placeholder"]::before, .ProseMirror [data-placeholder]::before { color: var(--sc-text-disabled) !important; }
+
+/* Timestamps, counters and shortcuts are data → mono */
+.sc-ts { font-family: var(--sc-font-mono); font-variant-numeric: tabular-nums; }
+
+/* `white` is remapped to surface.2 so panels follow the theme; text and borders
+   that are explicitly white (on orange/colored fills) must stay white. */
+[data-theme="dark"] .text-white { color: #fff; }
+[data-theme="dark"] .border-white { border-color: rgba(255,255,255,.6); }
+
+/* Inverse pills: a near-black fill in light becomes near-white in dark, so its text flips too. */
+[data-theme="dark"] .bg-gray-900.text-white, [data-theme="dark"] .bg-gray-800.text-white, [data-theme="dark"] .bg-black.text-white { color: var(--sc-surface-0); }
