@@ -9,6 +9,7 @@
 // response marked `from_finalize`. Only speech is sent (billing follows audio
 // sent); `KeepAlive` holds the connection open through the gaps.
 
+use super::keyterms;
 use super::provider::{TranscriptResult, TranscriptionError, TranscriptionProvider};
 use async_trait::async_trait;
 use futures_util::stream::{SplitSink, SplitStream};
@@ -36,8 +37,6 @@ const FRAME_SAMPLES: usize = SAMPLE_RATE as usize / 10;
 const KEEPALIVE_EVERY: Duration = Duration::from_secs(4);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const FINALIZE_TIMEOUT: Duration = Duration::from_secs(15);
-/// Deepgram accepts up to 100 keyterms per request.
-const MAX_KEYTERMS: usize = 100;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Lane {
@@ -63,6 +62,8 @@ struct LaneConn {
     sink: Arc<Mutex<WsSink>>,
     stream: WsStream,
     language: String,
+    /// Keyterm list version this stream was opened with.
+    keyterm_version: u64,
     keepalive: tokio::task::JoinHandle<()>,
 }
 
@@ -82,18 +83,16 @@ impl Drop for LaneConn {
 pub struct DeepgramProvider {
     api_key: String,
     model: String,
-    keyterms: Vec<String>,
     mic: Mutex<Option<LaneConn>>,
     system: Mutex<Option<LaneConn>>,
 }
 
 impl DeepgramProvider {
-    pub fn new(api_key: String, model: String, keyterms: Vec<String>) -> Self {
+    pub fn new(api_key: String, model: String) -> Self {
         let model = if model.trim().is_empty() { DEFAULT_MODEL.to_string() } else { model };
         Self {
             api_key,
             model,
-            keyterms,
             mic: Mutex::new(None),
             system: Mutex::new(None),
         }
@@ -106,8 +105,14 @@ impl DeepgramProvider {
         }
     }
 
-    async fn connect(&self, lane: Lane, language: &str) -> Result<LaneConn, TranscriptionError> {
-        let url = build_listen_url(&self.model, language, &self.keyterms)?;
+    async fn connect(
+        &self,
+        lane: Lane,
+        language: &str,
+        keyterm_version: u64,
+        keyterms: &[String],
+    ) -> Result<LaneConn, TranscriptionError> {
+        let url = build_listen_url(&self.model, language, keyterms)?;
         let mut request = url
             .as_str()
             .into_client_request()
@@ -121,7 +126,10 @@ impl DeepgramProvider {
             .map_err(|_| TranscriptionError::EngineFailed("Deepgram connection timed out".into()))?
             .map_err(|e| TranscriptionError::EngineFailed(format!("Deepgram connection failed: {}", e)))?;
 
-        info!("☁️ Deepgram {} lane connected (model {}, language {})", lane.name(), self.model, language);
+        info!(
+            "☁️ Deepgram {} lane connected (model {}, language {}, {} keyterms)",
+            lane.name(), self.model, language, keyterms.len()
+        );
 
         let (sink, stream) = ws.split();
         let sink = Arc::new(Mutex::new(sink));
@@ -138,7 +146,7 @@ impl DeepgramProvider {
             }
         });
 
-        Ok(LaneConn { sink, stream, language: language.to_string(), keepalive })
+        Ok(LaneConn { sink, stream, language: language.to_string(), keyterm_version, keepalive })
     }
 
     async fn transcribe_on_lane(
@@ -151,15 +159,21 @@ impl DeepgramProvider {
             return Ok(empty_result());
         }
         let language = deepgram_language(language.as_deref());
+        let (keyterm_version, keyterms) = keyterms::current();
 
         // Segments of one lane are sent in order over one stream; the two lanes
         // run independently.
         let mut slot = self.slot(lane).lock().await;
         let mut last_err = None;
         for attempt in 0..2 {
-            if slot.as_ref().map_or(true, |c| c.language != language) {
+            // Keyterms are fixed per stream, so a changed list (new names typed in
+            // the notes, say) means a fresh stream before this segment.
+            let stale = slot
+                .as_ref()
+                .map_or(true, |c| c.language != language || c.keyterm_version != keyterm_version);
+            if stale {
                 *slot = None;
-                *slot = Some(self.connect(lane, &language).await?);
+                *slot = Some(self.connect(lane, &language, keyterm_version, &keyterms).await?);
             }
             let conn = slot.as_mut().expect("connection just established");
             match run_segment(conn, &audio).await {
@@ -273,7 +287,7 @@ fn build_listen_url(model: &str, language: &str, keyterms: &[String]) -> Result<
             .append_pair("mip_opt_out", "true");
         // Keyterm prompting applies to monolingual nova-3 streams.
         if language != "multi" {
-            for term in keyterms.iter().map(|t| t.trim()).filter(|t| !t.is_empty()).take(MAX_KEYTERMS) {
+            for term in keyterms.iter().map(|t| t.trim()).filter(|t| !t.is_empty()).take(keyterms::MAX_KEYTERMS) {
                 q.append_pair("keyterm", term);
             }
         }
@@ -393,7 +407,8 @@ mod tests {
             .map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / i16::MAX as f32)
             .collect();
 
-        let provider = DeepgramProvider::new(key, String::new(), vec!["Notesify".into()]);
+        keyterms::set_meeting_terms("Notesify, Priya");
+        let provider = DeepgramProvider::new(key, String::new());
         for round in 1..=2 {
             let started = std::time::Instant::now();
             let result = provider.transcribe_lane(speech.clone(), Some("en".into()), "system").await.unwrap();

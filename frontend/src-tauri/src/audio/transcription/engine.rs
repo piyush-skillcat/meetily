@@ -241,9 +241,10 @@ pub async fn get_or_init_transcription_engine<R: Runtime>(
                 .filter(|k| !k.is_empty())
                 .ok_or_else(|| "No API key configured for deepgram transcription".to_string())?;
             info!("☁️ Initializing Deepgram live transcription (model: {})", config.model);
-            // Keyterms (participants, glossary) are not collected yet; the
-            // provider already forwards them once a source exists.
-            let provider = super::deepgram_provider::DeepgramProvider::new(api_key, config.model, Vec::new());
+            // Meeting and notes terms arrive from the recording screen; the
+            // persistent glossary is loaded here.
+            super::keyterms::load_glossary(app);
+            let provider = super::deepgram_provider::DeepgramProvider::new(api_key, config.model);
             Ok(TranscriptionEngine::Provider(Arc::new(provider)))
         }
         "localWhisper" | _ => {

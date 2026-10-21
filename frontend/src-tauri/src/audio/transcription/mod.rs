@@ -7,6 +7,7 @@ pub mod whisper_provider;
 pub mod parakeet_provider;
 pub mod cloud_provider;
 pub mod deepgram_provider;
+pub mod keyterms;
 pub mod engine;
 pub mod worker;
 

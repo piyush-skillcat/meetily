@@ -37,9 +37,33 @@ function write(key: string, draft: NotesDraft | null) {
   }
 }
 
+/** "People & topic" for the meeting being recorded; cleared with the draft once the meeting is saved. */
+const LIVE_PEOPLE_KEY = 'meetily:people-draft:live';
+
+function writePeople(text: string) {
+  try {
+    if (text.trim()) localStorage.setItem(LIVE_PEOPLE_KEY, text);
+    else localStorage.removeItem(LIVE_PEOPLE_KEY);
+  } catch {}
+}
+
 export const notesDraft = {
   readLive: () => read(LIVE_DRAFT_KEY),
   writeLive: (markdown: string, json?: string) =>
     write(LIVE_DRAFT_KEY, { markdown, json, updatedAt: Date.now() }),
-  clearLive: () => write(LIVE_DRAFT_KEY, null),
+  /** Clears the notes only (the "Clear notes" button). */
+  clearLiveNotes: () => write(LIVE_DRAFT_KEY, null),
+  /** Clears the whole live draft (notes and people) once the meeting is saved. */
+  clearLive: () => {
+    write(LIVE_DRAFT_KEY, null);
+    writePeople('');
+  },
+  readPeople: (): string => {
+    try {
+      return localStorage.getItem(LIVE_PEOPLE_KEY) ?? '';
+    } catch {
+      return '';
+    }
+  },
+  writePeople,
 };

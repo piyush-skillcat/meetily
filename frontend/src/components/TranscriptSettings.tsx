@@ -7,6 +7,7 @@ import { Label } from './ui/label';
 import { Eye, EyeOff, Lock, Unlock } from 'lucide-react';
 import { ModelManager } from './WhisperModelManager';
 import { ParakeetModelManager } from './ParakeetModelManager';
+import { VocabularySettings } from './VocabularySettings';
 
 
 export interface TranscriptModelProps {
@@ -266,6 +267,8 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                             </div>
                         </div>
                     )}
+
+                    {uiProvider === 'deepgram' && <VocabularySettings />}
                 </div>
             </div>
         </div >
