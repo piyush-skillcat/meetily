@@ -438,6 +438,11 @@ async fn transcribe_chunk_with_provider<R: Runtime>(
     chunk: AudioChunk,
     app: &AppHandle<R>,
 ) -> std::result::Result<(String, Option<f32>, bool), TranscriptionError> {
+    let lane = match chunk.device_type {
+        crate::audio::recording_state::DeviceType::Microphone => "mic",
+        crate::audio::recording_state::DeviceType::System => "system",
+    };
+
     // Convert to 16kHz mono for transcription
     let transcription_data = if chunk.sample_rate != 16000 {
         crate::audio::audio_processing::resample_audio(&chunk.data, chunk.sample_rate, 16000)
@@ -553,7 +558,7 @@ async fn transcribe_chunk_with_provider<R: Runtime>(
             // NEW: Trait-based provider (clean, unified interface)
             let language = crate::get_language_preference_internal();
 
-            match provider.transcribe(speech_samples, language).await {
+            match provider.transcribe_lane(speech_samples, language, lane).await {
                 Ok(result) => {
                     let cleaned_text = result.text.trim().to_string();
                     if cleaned_text.is_empty() {

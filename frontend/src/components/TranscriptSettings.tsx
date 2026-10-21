@@ -157,6 +157,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                                     <SelectValue placeholder="Select provider" />
                                 </SelectTrigger>
                                 <SelectContent>
+                                    <SelectItem value="deepgram">Deepgram live (streaming, best for meetings, needs API key)</SelectItem>
                                     <SelectItem value="openai">OpenAI cloud (best accuracy, needs API key)</SelectItem>
                                     <SelectItem value="groq">Groq Whisper (fast and accurate, needs API key)</SelectItem>
                                     <SelectItem value="parakeet">Parakeet (local, English, fast)</SelectItem>
@@ -210,6 +211,12 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                     {(uiProvider === 'openai' || uiProvider === 'groq') && (
                         <p className="text-xs text-gray-500 mx-1">
                             Audio is sent to {uiProvider === 'openai' ? 'OpenAI' : 'Groq'} in short speech segments as you talk. Your mic and the other side are transcribed separately so the transcript shows who said what.
+                        </p>
+                    )}
+
+                    {uiProvider === 'deepgram' && (
+                        <p className="text-xs text-gray-500 mx-1">
+                            Your mic and the other side each stream to Deepgram over their own live connection, so the transcript shows who said what. Only detected speech is sent, and Deepgram is asked not to use your audio for model training. Language set to Auto uses Deepgram&apos;s multilingual mode.
                         </p>
                     )}
 

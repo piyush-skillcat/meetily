@@ -62,6 +62,18 @@ pub trait TranscriptionProvider: Send + Sync {
         language: Option<String>,
     ) -> std::result::Result<TranscriptResult, TranscriptionError>;
 
+    /// Transcribe a segment from a specific audio lane ("mic" or "system").
+    /// Streaming providers keep one connection per lane so each keeps its own
+    /// context; batch providers ignore the lane.
+    async fn transcribe_lane(
+        &self,
+        audio: Vec<f32>,
+        language: Option<String>,
+        _lane: &str,
+    ) -> std::result::Result<TranscriptResult, TranscriptionError> {
+        self.transcribe(audio, language).await
+    }
+
     /// Check if a model is currently loaded
     async fn is_model_loaded(&self) -> bool;
 

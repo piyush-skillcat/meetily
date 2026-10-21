@@ -135,7 +135,7 @@ pub async fn validate_transcription_model_ready<R: Runtime>(app: &AppHandle<R>) 
                 }
             }
         }
-        "openai" | "groq" => {
+        "openai" | "groq" | "deepgram" => {
             info!("☁️ Validating cloud transcription provider '{}'...", config.provider);
             match config.api_key.as_deref().map(str::trim) {
                 Some(key) if !key.is_empty() => Ok(()),
@@ -148,7 +148,7 @@ pub async fn validate_transcription_model_ready<R: Runtime>(app: &AppHandle<R>) 
         other => {
             warn!("❌ Unsupported transcription provider for local recording: {}", other);
             Err(format!(
-                "Provider '{}' is not supported for transcription. Please select 'parakeet', 'localWhisper', 'openai' or 'groq'.",
+                "Provider '{}' is not supported for transcription. Please select 'parakeet', 'localWhisper', 'openai', 'groq' or 'deepgram'.",
                 other
             ))
         }
@@ -232,6 +232,18 @@ pub async fn get_or_init_transcription_engine<R: Runtime>(
                 .ok_or_else(|| format!("No API key configured for {} transcription", config.provider))?;
             info!("☁️ Initializing {} cloud transcription (model: {})", config.provider, config.model);
             let provider = super::cloud_provider::CloudTranscriptionProvider::new(vendor, config.model, api_key);
+            Ok(TranscriptionEngine::Provider(Arc::new(provider)))
+        }
+        "deepgram" => {
+            let api_key = config
+                .api_key
+                .map(|k| k.trim().to_string())
+                .filter(|k| !k.is_empty())
+                .ok_or_else(|| "No API key configured for deepgram transcription".to_string())?;
+            info!("☁️ Initializing Deepgram live transcription (model: {})", config.model);
+            // Keyterms (participants, glossary) are not collected yet; the
+            // provider already forwards them once a source exists.
+            let provider = super::deepgram_provider::DeepgramProvider::new(api_key, config.model, Vec::new());
             Ok(TranscriptionEngine::Provider(Arc::new(provider)))
         }
         "localWhisper" | _ => {
