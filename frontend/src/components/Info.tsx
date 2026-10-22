@@ -14,14 +14,14 @@ const Info = React.forwardRef<HTMLButtonElement, InfoProps>(({ isCollapsed }, re
       <DialogTrigger asChild>
         <button 
           ref={ref} 
-          className={`flex items-center justify-center mb-2 cursor-pointer border-none transition-colors ${
-            isCollapsed 
-              ? "bg-transparent p-2 hover:bg-gray-100 rounded-lg" 
-              : "w-full px-3 py-1.5 mt-1 text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-200 rounded-lg shadow-sm"
+          className={`flex items-center justify-center cursor-pointer border-none transition-colors ${
+            isCollapsed
+              ? "h-8 w-8 bg-transparent rounded-md text-gray-500 hover:text-gray-900 hover:bg-gray-200"
+              : "w-full px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200 rounded-md"
           }`}
           title="About Notesify"
         >
-          <InfoIcon className={`text-gray-600 ${isCollapsed ? "w-5 h-5" : "w-4 h-4"}`} />
+          <InfoIcon className="w-4 h-4" />
           {!isCollapsed && (
             <span className="ml-2 text-sm text-gray-700">About</span>
           )}

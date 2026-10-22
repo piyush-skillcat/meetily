@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { PanelRight } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { RecordingControls } from '@/components/RecordingControls';
 import { useSidebar } from '@/components/Sidebar/SidebarProvider';
@@ -27,6 +28,8 @@ export default function Home() {
   // Local page state (not moved to contexts)
   const [isRecording, setIsRecordingState] = useState(false);
   const [showRecoveryDialog, setShowRecoveryDialog] = useState(false);
+  // Transcript drawer: opens when a recording starts, closable any time.
+  const [showTranscript, setShowTranscript] = useState(false);
 
   // Use contexts for state management
   const { meetingTitle } = useTranscripts();
@@ -170,6 +173,10 @@ export default function Home() {
     }
   };
 
+  useEffect(() => {
+    if (recordingState.isRecording) setShowTranscript(true);
+  }, [recordingState.isRecording]);
+
   // Computed values using global status
   const isProcessingStop = status === RecordingStatus.PROCESSING_TRANSCRIPTS || isProcessing;
 
@@ -178,7 +185,7 @@ export default function Home() {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, ease: 'easeOut' }}
-      className="flex flex-col h-screen bg-gray-50"
+      className="flex flex-col h-screen bg-white"
     >
       {/* All Modals supported*/}
       <SettingsModals
@@ -197,49 +204,57 @@ export default function Home() {
         onLoadPreview={loadMeetingTranscripts}
       />
       <div className="flex flex-1 overflow-hidden">
-        {/* Granola-style split: notes on the left, live transcript on the right */}
-        <LiveNotesPanel isRecording={recordingState.isRecording} />
-        <div className="w-[38%] min-w-[320px] max-w-[560px] flex flex-col border-l border-gray-200 bg-white overflow-hidden">
-          <TranscriptPanel
-            isProcessingStop={isProcessingStop}
-            isStopping={isStopping}
-            showModal={showModal}
-            compact
-          />
-        </div>
+        {/* The meeting as a document: centred notes column, recorder docked below */}
+        <div className="relative flex-1 min-w-0 flex flex-col">
+          {!showTranscript && (
+            <button
+              onClick={() => setShowTranscript(true)}
+              className="absolute top-3 right-4 z-20 h-8 px-2.5 flex items-center gap-1.5 rounded-md text-[13px] text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+              title="Show transcript"
+            >
+              <PanelRight className="w-4 h-4" />
+              Transcript
+            </button>
+          )}
 
-        {/* Recording controls - only show when permissions are granted or already recording and not showing status messages */}
-        {(hasMicrophone || isRecording) &&
-          status !== RecordingStatus.PROCESSING_TRANSCRIPTS &&
-          status !== RecordingStatus.SAVING && (
-            <div className="fixed bottom-12 left-0 right-0 z-10">
-              <div
-                className="flex justify-center pl-8 transition-[margin] duration-300"
-                style={{
-                  marginLeft: sidebarCollapsed ? '4rem' : '16rem'
-                }}
-              >
-                <div className="w-2/3 max-w-[750px] flex justify-center">
-                  <div className="bg-white rounded-full shadow-lg border border-gray-200 flex items-center">
-                    <RecordingControls
-                      isRecording={recordingState.isRecording}
-                      onRecordingStop={(callApi = true) => handleRecordingStop(callApi)}
-                      onRecordingStart={handleRecordingStart}
-                      onTranscriptReceived={() => { }} // Not actually used by RecordingControls
-                      onStopInitiated={() => setIsStopping(true)}
-                      onTranscriptionError={(message) => {
-                        showModal('errorAlert', message);
-                      }}
-                      isRecordingDisabled={isRecordingDisabled}
-                      isParentProcessing={isProcessingStop}
-                      selectedDevices={selectedDevices}
-                      meetingName={meetingTitle}
-                    />
-                  </div>
+          <LiveNotesPanel isRecording={recordingState.isRecording} />
+
+          {/* Recorder dock - only when permissions are granted or already recording, and not while saving */}
+          {(hasMicrophone || isRecording) &&
+            status !== RecordingStatus.PROCESSING_TRANSCRIPTS &&
+            status !== RecordingStatus.SAVING && (
+              <div className="pointer-events-none absolute inset-x-0 bottom-6 z-10 flex justify-center">
+                <div className="pointer-events-auto">
+                  <RecordingControls
+                    isRecording={recordingState.isRecording}
+                    onRecordingStop={(callApi = true) => handleRecordingStop(callApi)}
+                    onRecordingStart={handleRecordingStart}
+                    onTranscriptReceived={() => { }} // Not actually used by RecordingControls
+                    onStopInitiated={() => setIsStopping(true)}
+                    onTranscriptionError={(message) => {
+                      showModal('errorAlert', message);
+                    }}
+                    isRecordingDisabled={isRecordingDisabled}
+                    isParentProcessing={isProcessingStop}
+                    selectedDevices={selectedDevices}
+                    meetingName={meetingTitle}
+                  />
                 </div>
               </div>
-            </div>
-          )}
+            )}
+        </div>
+
+        {showTranscript && (
+          <aside className="w-[380px] min-w-[320px] flex flex-col border-l border-gray-200 bg-white overflow-hidden">
+            <TranscriptPanel
+              isProcessingStop={isProcessingStop}
+              isStopping={isStopping}
+              showModal={showModal}
+              compact
+              onClose={() => setShowTranscript(false)}
+            />
+          </aside>
+        )}
 
         {/* Status Overlays - Processing and Saving */}
         <StatusOverlays

@@ -12,104 +12,116 @@
    ────────────────────────────────────────────────────────────────── */
 
 :root {
-  --sc-font-display: var(--font-fira-sans), "Fira Sans", system-ui, sans-serif;
+  --sc-font-display: var(--font-inter), "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --sc-font-mono: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, Menlo, monospace;
-  --sc-primary: #F05523;
-  --sc-primary-hover: #E44515;
-  --sc-primary-rgb: 240 85 35;
+  /* SkillCat orange stays the brand mark; UI actions use the black primary. */
+  --sc-brand: #F05523;
+  --sc-primary: #171717;
+  --sc-primary-hover: #000000;
+  --sc-primary-rgb: 239 205 54;    /* focus ring: gold */
   --sc-radius-xs: 4px; --sc-radius-sm: 8px; --sc-radius-md: 10px; --sc-radius-lg: 16px;
   --sc-radius-xl: 20px; --sc-radius-pill: 999px;
   --sc-dur: 200ms; --sc-ease: cubic-bezier(.22, 1, .36, 1);
 }
 
-/* ── LIGHT (warm sand) ── default so SSR/static export never flashes unstyled */
+/* ── LIGHT (warm paper) ── default so SSR/static export never flashes unstyled.
+   Calm off-white canvas, one step darker sidebar, charcoal ink, black primary,
+   gold for focus/highlight, green only for "recording". */
 :root, [data-theme="light"] {
-  --sc-ink-100: #2B2722; --sc-ink-200: #403B33; --sc-ink-300: #797161; --sc-ink-400: #938A78;
-  --sc-ink-500: #A99F8C; --sc-ink-700: #DBD3C4; --sc-ink-800: #EAE3D7; --sc-ink-900: #F4EFE7;
-  --sc-surface-0: #ECE7DE; --sc-surface-1: #F6F2EB; --sc-surface-2: #FFFFFF; --sc-surface-sunken: #E8E1D6;
-  --sc-border-hairline: #E4DCD0; --sc-border-subtle: rgba(43, 39, 34, .08);
+  --sc-ink-100: #1C1C1A; --sc-ink-200: #4E4D4B; --sc-ink-300: #696966; --sc-ink-400: #8A8A86;
+  --sc-ink-500: #A3A39E; --sc-ink-700: #C8C8C5; --sc-ink-800: #E1E1DC; --sc-ink-900: #ECECE6;
+  --sc-surface-0: #F4F4EC; --sc-surface-1: #ECECE5; --sc-surface-2: #FFFFFF; --sc-surface-sunken: #E7E7DF;
+  --sc-border-hairline: #E3E3DE; --sc-border-subtle: rgba(28, 28, 26, .07);
   --sc-text-strong: var(--sc-ink-100); --sc-text-body: var(--sc-ink-200);
   --sc-text-muted: var(--sc-ink-300); --sc-text-disabled: var(--sc-ink-500);
-  --sc-success: #1E8A56; --sc-info: #356FAE; --sc-warning: #C77D0E; --sc-danger: #CE2E39; --sc-accent: #7257C0;
-  --sc-success-bg: #DDF0E5; --sc-info-bg: #DCE8F4; --sc-warning-bg: #FAEACB; --sc-danger-bg: #FBE0E2; --sc-accent-bg: #E8E1F7;
-  --sc-shadow-sm: 0 1px 3px rgba(60, 48, 36, .08); --sc-shadow-md: 0 4px 14px rgba(60, 48, 36, .1);
-  --sc-cta-fill: radial-gradient(rgba(240, 85, 35, 1) 28%, rgba(228, 69, 21, 1) 100%);
-  --sc-cta-shadow: 0 0 0 1px rgba(228, 69, 21, .45), inset 0 0 16px rgba(138, 49, 20, .5), 0 4px 12px rgba(240, 85, 35, .22);
-  --sc-glow: radial-gradient(60% 60% at 18% 12%, rgba(240, 85, 35, .1), transparent 60%);
+  --sc-success: #3F8F2A; --sc-info: #2F6FD6; --sc-warning: #C77D0E; --sc-danger: #E0245E; --sc-accent: #7C6204;
+  --sc-success-bg: #E4F2DC; --sc-info-bg: #E0EAFB; --sc-warning-bg: #FAEACB; --sc-danger-bg: #FCE1EA; --sc-accent-bg: #FBF0C8;
+  --sc-gold: #FBDF85; --sc-gold-active: #FFD11E; --sc-gold-ink: #7C6204;
+  --sc-recording: #84CC16; --sc-recording-ink: #65A30D;
+  --sc-dock: #161615; --sc-dock-ink: #F4F4EC;
+  --sc-shadow-sm: 0 1px 2px rgba(28, 28, 26, .06); --sc-shadow-md: 0 8px 24px rgba(28, 28, 26, .08), 0 1px 2px rgba(28, 28, 26, .06);
+  --sc-cta-fill: #171717;
+  --sc-cta-shadow: 0 1px 2px rgba(0, 0, 0, .18);
+  --sc-glow: none;
   color-scheme: light;
 
   /* Tailwind bridge (RGB triplets so /opacity modifiers keep working) */
-  --tw-white: 255 255 255;          /* surface.2  */
-  --tw-black: 43 39 34;             /* ink.100    */
-  --tw-g-50: 246 242 235;           /* surface.1  */
-  --tw-g-100: 244 239 231;          /* ink.900    */
-  --tw-g-200: 228 220 208;          /* border.hairline */
-  --tw-g-300: 219 211 196;          /* ink.700    */
-  --tw-g-400: 169 159 140;          /* ink.500 (disabled) */
-  --tw-g-500: 121 113 97;           /* ink.300 (muted) */
-  --tw-g-600: 100 92 78;            /* between muted and body */
-  --tw-g-700: 64 59 51;             /* ink.200 (body) */
-  --tw-g-800: 52 47 41;             /* near strong */
-  --tw-g-900: 43 39 34;             /* ink.100 (strong) */
-  --tw-p-50: 253 240 235;           /* primary tint */
-  --tw-p-100: 251 226 215;
-  --tw-p-200: 247 196 176;
-  --tw-p-300: 244 160 128;
-  --tw-p-400: 242 120 76;
-  --tw-p-500: 240 85 35;            /* primary */
-  --tw-p-600: 228 69 21;            /* primary-hover */
-  --tw-p-700: 196 58 18;
-  --tw-p-800: 138 49 20;            /* burnt */
-  --tw-p-900: 102 36 14;
-  --tw-success: 30 138 86; --tw-success-bg: 221 240 229;
-  --tw-danger: 206 46 57; --tw-danger-bg: 251 224 226;
+  --tw-white: 250 250 246;          /* panels, a breath lighter than the canvas */
+  --tw-black: 28 28 26;
+  --tw-g-50: 244 244 236;           /* canvas  #F4F4EC */
+  --tw-g-100: 236 236 229;          /* sidebar #ECECE5 */
+  --tw-g-200: 227 227 222;          /* hairline */
+  --tw-g-300: 200 200 197;          /* border  */
+  --tw-g-400: 163 163 158;          /* disabled */
+  --tw-g-500: 115 115 112;          /* muted   */
+  --tw-g-600: 105 105 102;
+  --tw-g-700: 78 77 75;             /* body    #4E4D4B */
+  --tw-g-800: 52 51 50;
+  --tw-g-900: 28 28 26;             /* strong  */
+  /* "blue" utilities = the primary, which is black here */
+  --tw-p-50: 236 236 229;
+  --tw-p-100: 227 227 222;
+  --tw-p-200: 200 200 197;
+  --tw-p-300: 163 163 158;
+  --tw-p-400: 82 82 80;
+  --tw-p-500: 38 38 36;
+  --tw-p-600: 23 23 23;
+  --tw-p-700: 0 0 0;
+  --tw-p-800: 0 0 0;
+  --tw-p-900: 0 0 0;
+  --tw-success: 63 143 42; --tw-success-bg: 228 242 220;
+  --tw-danger: 224 36 94; --tw-danger-bg: 252 225 234;
   --tw-warning: 199 125 14; --tw-warning-bg: 250 234 203;
-  --tw-info: 53 111 174; --tw-info-bg: 220 232 244;
+  --tw-info: 47 111 214; --tw-info-bg: 224 234 251;
 }
 
-/* ── DARK (near-black) ── */
+/* ── DARK (warm charcoal) ── */
 [data-theme="dark"] {
-  --sc-ink-100: #F0F0F0; --sc-ink-200: #D9D9D9; --sc-ink-300: #A8A8A8; --sc-ink-400: #939393;
-  --sc-ink-500: #737373; --sc-ink-700: #404040; --sc-ink-800: #262626; --sc-ink-900: #1A1A1A;
-  --sc-surface-0: #0D0D0D; --sc-surface-1: #171717; --sc-surface-2: #1E1D1D; --sc-surface-sunken: #080808;
-  --sc-border-hairline: #484747; --sc-border-subtle: rgba(255, 255, 255, .06);
+  --sc-ink-100: #FAFAFA; --sc-ink-200: #EDEEE7; --sc-ink-300: #A1A1A1; --sc-ink-400: #8A8A86;
+  --sc-ink-500: #6B6B67; --sc-ink-700: #494949; --sc-ink-800: #333331; --sc-ink-900: #2B2B29;
+  --sc-surface-0: #262624; --sc-surface-1: #20201E; --sc-surface-2: #30302E; --sc-surface-sunken: #1C1C1A;
+  --sc-border-hairline: #3A3A38; --sc-border-subtle: rgba(255, 255, 255, .06);
   --sc-text-strong: var(--sc-ink-100); --sc-text-body: var(--sc-ink-200);
   --sc-text-muted: var(--sc-ink-300); --sc-text-disabled: var(--sc-ink-500);
-  --sc-success: #14B867; --sc-info: #1E90FF; --sc-warning: #FFC524; --sc-danger: #FF1F31; --sc-accent: #6944FF;
-  --sc-success-bg: rgba(20, 184, 103, .2); --sc-info-bg: rgba(30, 144, 255, .2);
-  --sc-warning-bg: rgba(255, 197, 36, .2); --sc-danger-bg: rgba(255, 31, 49, .2); --sc-accent-bg: rgba(105, 68, 255, .2);
-  --sc-shadow-sm: 0 2px 8px rgba(0, 0, 0, .3); --sc-shadow-md: 0 4px 12px rgba(0, 0, 0, .35);
-  --sc-cta-fill: radial-gradient(rgba(228, 69, 21, .75) 29%, rgba(138, 49, 20, .75) 100%), rgba(13, 13, 13, .75);
-  --sc-cta-shadow: 0 0 0 1px rgba(240, 85, 35, .4), inset 0 0 16px rgba(138, 49, 20, .75);
-  --sc-glow: radial-gradient(60% 60% at 18% 12%, rgba(240, 85, 35, .16), transparent 60%);
+  --sc-success: #8BD45E; --sc-info: #6EA2F7; --sc-warning: #F5B54E; --sc-danger: #FF696C; --sc-accent: #D7C178;
+  --sc-success-bg: rgba(139, 212, 94, .16); --sc-info-bg: rgba(110, 162, 247, .16);
+  --sc-warning-bg: rgba(245, 181, 78, .16); --sc-danger-bg: rgba(255, 105, 108, .16); --sc-accent-bg: rgba(251, 223, 133, .14);
+  --sc-gold: #FBDF85; --sc-gold-active: #FFD11E; --sc-gold-ink: #D7C178;
+  --sc-recording: #A3E635; --sc-recording-ink: #A3E635;
+  --sc-dock: #0E0E0D; --sc-dock-ink: #F4F4EC;
+  --sc-shadow-sm: 0 1px 2px rgba(0, 0, 0, .3); --sc-shadow-md: 0 8px 24px rgba(0, 0, 0, .35);
+  --sc-cta-fill: #F3F3F3;
+  --sc-cta-shadow: 0 1px 2px rgba(0, 0, 0, .3);
+  --sc-glow: none;
   color-scheme: dark;
 
-  --tw-white: 30 29 29;             /* surface.2 */
-  --tw-black: 240 240 240;          /* ink.100   */
-  --tw-g-50: 23 23 23;              /* surface.1 */
-  --tw-g-100: 26 26 26;             /* ink.900   */
-  --tw-g-200: 38 38 38;             /* ink.800   */
-  --tw-g-300: 64 64 64;             /* ink.700   */
-  --tw-g-400: 115 115 115;          /* ink.500   */
-  --tw-g-500: 147 147 147;          /* ink.400   */
-  --tw-g-600: 168 168 168;          /* ink.300 (muted) */
-  --tw-g-700: 217 217 217;          /* ink.200 (body) */
-  --tw-g-800: 232 232 232;
-  --tw-g-900: 240 240 240;          /* ink.100 (strong) */
-  --tw-p-50: 46 24 16;              /* primary tint on dark */
-  --tw-p-100: 66 30 18;
-  --tw-p-200: 102 36 14;
-  --tw-p-300: 138 49 20;
-  --tw-p-400: 196 58 18;
-  --tw-p-500: 240 85 35;            /* primary */
-  --tw-p-600: 228 69 21;            /* primary-hover (used by bg-blue-600 → keep bright on dark) */
-  --tw-p-700: 242 120 76;
-  --tw-p-800: 244 160 128;
-  --tw-p-900: 247 196 176;
-  --tw-success: 20 184 103; --tw-success-bg: 16 52 34;
-  --tw-danger: 255 31 49; --tw-danger-bg: 61 18 22;
-  --tw-warning: 255 197 36; --tw-warning-bg: 61 48 14;
-  --tw-info: 30 144 255; --tw-info-bg: 15 42 70;
+  --tw-white: 38 38 36;             /* canvas #262624 */
+  --tw-black: 250 250 250;
+  --tw-g-50: 34 34 32;
+  --tw-g-100: 32 32 30;             /* sidebar #20201E */
+  --tw-g-200: 58 58 56;             /* hairline */
+  --tw-g-300: 73 73 73;             /* border  */
+  --tw-g-400: 107 107 103;
+  --tw-g-500: 161 161 161;          /* muted   */
+  --tw-g-600: 180 180 176;
+  --tw-g-700: 237 238 231;          /* body    */
+  --tw-g-800: 243 243 240;
+  --tw-g-900: 250 250 250;          /* strong  */
+  /* primary inverts to near-white on dark */
+  --tw-p-50: 48 48 46;
+  --tw-p-100: 58 58 56;
+  --tw-p-200: 73 73 73;
+  --tw-p-300: 120 120 116;
+  --tw-p-400: 200 200 196;
+  --tw-p-500: 236 236 232;
+  --tw-p-600: 243 243 243;
+  --tw-p-700: 250 250 250;
+  --tw-p-800: 250 250 250;
+  --tw-p-900: 250 250 250;
+  --tw-success: 139 212 94; --tw-success-bg: 34 52 26;
+  --tw-danger: 255 105 108; --tw-danger-bg: 66 28 30;
+  --tw-warning: 245 181 78; --tw-warning-bg: 61 48 22;
+  --tw-info: 110 162 247; --tw-info-bg: 28 40 66;
 }
 
 /* ── base ── */
@@ -128,8 +140,8 @@ html, body {
 
 /* Primary call-to-action: the signature radial fill with inner burnt-orange shadow */
 .sc-cta {
-  color: #fff; background: var(--sc-cta-fill); box-shadow: var(--sc-cta-shadow);
-  border: 0; font-weight: 700; transition: filter var(--sc-dur) var(--sc-ease);
+  color: var(--sc-surface-0); background: var(--sc-cta-fill); box-shadow: var(--sc-cta-shadow);
+  border: 0; font-weight: 600; transition: filter var(--sc-dur) var(--sc-ease);
 }
 .sc-cta:hover { filter: brightness(1.08); }
 .sc-cta:disabled { filter: none; background: var(--sc-ink-700); color: var(--sc-text-disabled); box-shadow: none; }
@@ -141,8 +153,8 @@ html, body {
 .sc-pill-warning { background: var(--sc-warning-bg); color: var(--sc-warning); }
 .sc-pill-danger { background: var(--sc-danger-bg); color: var(--sc-danger); }
 
-/* Focus: 2px primary ring at 40% */
-:focus-visible { outline: none; box-shadow: 0 0 0 2px rgb(var(--sc-primary-rgb) / .4); }
+/* Focus: 2px gold ring */
+:focus-visible { outline: none; box-shadow: 0 0 0 2px rgb(var(--sc-primary-rgb) / .7); }
 
 /* Subtle corner glow on the main canvas (hero rule: offset, never centered) */
 .sc-canvas { background-image: var(--sc-glow); }
@@ -164,3 +176,10 @@ html, body {
 
 /* Inverse pills: a near-black fill in light becomes near-white in dark, so its text flips too. */
 [data-theme="dark"] .bg-gray-900.text-white, [data-theme="dark"] .bg-gray-800.text-white, [data-theme="dark"] .bg-black.text-white { color: var(--sc-surface-0); }
+
+/* Primary (formerly blue) fills invert on dark, so their text flips with them. */
+[data-theme="dark"] .bg-blue-500.text-white, [data-theme="dark"] .bg-blue-600.text-white,
+[data-theme="dark"] .bg-blue-700.text-white { color: var(--sc-surface-0); }
+
+/* Hairline scrollbars, like the rest of the chrome */
+* { scrollbar-width: thin; scrollbar-color: var(--sc-ink-700) transparent; }

@@ -1,7 +1,7 @@
 'use client'
 
 import './globals.css'
-import { Fira_Sans, IBM_Plex_Mono } from 'next/font/google'
+import localFont from 'next/font/local'
 import { ThemeProvider, THEME_BOOTSTRAP_SCRIPT } from '@/contexts/ThemeContext'
 import Sidebar from '@/components/Sidebar'
 import { SidebarProvider } from '@/components/Sidebar/SidebarProvider'
@@ -29,16 +29,20 @@ import { ImportDialogProvider } from '@/contexts/ImportDialogContext'
 import { isAudioExtension, getAudioFormatsDisplayList } from '@/constants/audioFormats'
 
 
-const firaSans = Fira_Sans({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700', '900'],
-  variable: '--font-fira-sans',
+// Fonts ship with the app (src/fonts) so builds never depend on Google Fonts.
+const inter = localFont({
+  src: '../fonts/Inter-Variable-latin.woff2',
+  weight: '100 900',
+  variable: '--font-inter',
   display: 'swap',
 })
 
-const plexMono = IBM_Plex_Mono({
-  subsets: ['latin'],
-  weight: ['400', '500', '600'],
+const plexMono = localFont({
+  src: [
+    { path: '../fonts/IBMPlexMono-400-latin.woff2', weight: '400' },
+    { path: '../fonts/IBMPlexMono-500-latin.woff2', weight: '500' },
+    { path: '../fonts/IBMPlexMono-600-latin.woff2', weight: '600' },
+  ],
   variable: '--font-plex-mono',
   display: 'swap',
 })
@@ -244,8 +248,10 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }} />
+        {/* Browser preview of the UI during `pnpm dev`; inert inside the Tauri app */}
+        {process.env.NODE_ENV === 'development' && <script src="/dev-tauri-stub.js" />}
       </head>
-      <body className={`${firaSans.variable} ${plexMono.variable} font-sans antialiased`}>
+      <body className={`${inter.variable} ${plexMono.variable} font-sans antialiased`}>
         <ThemeProvider>
         <AnalyticsProvider>
           <RecordingStateProvider>

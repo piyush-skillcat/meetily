@@ -19,7 +19,7 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['var(--font-fira-sans)', '"Fira Sans"', 'system-ui', 'sans-serif'],
+        sans: ['var(--font-inter)', '"Inter"', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'system-ui', 'sans-serif'],
         mono: ['var(--font-plex-mono)', '"IBM Plex Mono"', 'ui-monospace', 'Menlo', 'monospace'],
       },
       colors: {

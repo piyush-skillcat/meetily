@@ -2,7 +2,7 @@ import { VirtualizedTranscriptView } from '@/components/VirtualizedTranscriptVie
 import { PermissionWarning } from '@/components/PermissionWarning';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
-import { Copy, GlobeIcon } from 'lucide-react';
+import { Copy, GlobeIcon, X } from 'lucide-react';
 import { useTranscripts } from '@/contexts/TranscriptContext';
 import { useConfig } from '@/contexts/ConfigContext';
 import { useRecordingState } from '@/contexts/RecordingStateContext';
@@ -25,6 +25,8 @@ interface TranscriptPanelProps {
   showModal: (name: ModalType, message?: string) => void;
   /** Narrow side-column layout (used next to the notes pad) */
   compact?: boolean;
+  /** Shows a close button in the compact header */
+  onClose?: () => void;
 }
 
 export function TranscriptPanel({
@@ -32,6 +34,7 @@ export function TranscriptPanel({
   isStopping,
   showModal,
   compact = false,
+  onClose,
 }: TranscriptPanelProps) {
   // Contexts
   const { transcripts, transcriptContainerRef, copyTranscript } = useTranscripts();
@@ -56,13 +59,14 @@ export function TranscriptPanel({
   return (
     <div ref={transcriptContainerRef} className={`w-full bg-white flex flex-col overflow-y-auto ${compact ? '' : 'border-r border-gray-200'}`}>
       {/* Title area - Sticky header */}
-      <div className={`sticky top-0 z-10 bg-white border-gray-200 ${compact ? 'px-4 pt-4 pb-2 border-b border-gray-100' : 'p-4'}`}>
-        <div className="flex flex-col space-y-3">
+      <div className={`sticky top-0 z-10 bg-white border-gray-200 ${compact ? 'px-4 h-12 flex items-center border-b border-gray-200' : 'p-4'}`}>
+        <div className="flex flex-col space-y-3 w-full">
           <div className="flex  flex-col space-y-2">
             <div className={`flex items-center space-x-2 ${compact ? 'justify-between' : 'justify-center'}`}>
               {compact && (
-                <span className="text-sm font-medium text-gray-800">Transcript</span>
+                <span className="text-[13px] font-medium text-gray-900">Transcript</span>
               )}
+              <div className="flex items-center gap-1">
               <ButtonGroup>
                 {transcripts?.length > 0 && (
                   <Button
@@ -91,6 +95,17 @@ export function TranscriptPanel({
                   </Button>
                 }
               </ButtonGroup>
+              {compact && onClose && (
+                <button
+                  onClick={onClose}
+                  className="h-7 w-7 flex items-center justify-center rounded-md text-gray-500 hover:text-gray-900 hover:bg-gray-100"
+                  title="Hide transcript"
+                  aria-label="Hide transcript"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+              </div>
             </div>
           </div>
         </div>

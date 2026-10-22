@@ -20,7 +20,6 @@ export function BrandMark({ size = 36, className = "" }: { size?: number; classN
       viewBox="0 0 40 40"
       className={className}
       aria-hidden="true"
-      style={{ filter: "drop-shadow(0 0 10px rgba(240,85,35,.35))" }}
     >
       <defs>
         <radialGradient id="sc-mark-fill" cx="30%" cy="25%" r="90%">
@@ -50,14 +49,11 @@ const Logo = React.forwardRef<HTMLButtonElement, LogoProps>(({ isCollapsed }, re
         <button
           ref={ref}
           title={APP_NAME}
-          className={`flex items-center gap-3 mb-2 cursor-pointer bg-transparent border-none p-0 hover:opacity-85 transition-opacity ${isCollapsed ? "justify-center" : "justify-start"}`}
+          className={`flex items-center gap-2 cursor-pointer bg-transparent border-none p-0 hover:opacity-85 transition-opacity ${isCollapsed ? "justify-center" : "justify-start"}`}
         >
-          <BrandMark size={isCollapsed ? 38 : 32} />
+          <BrandMark size={isCollapsed ? 28 : 22} />
           {!isCollapsed && (
-            <span className="flex flex-col leading-none text-left">
-              <span className="sc-eyebrow" style={{ fontSize: 9 }}>SkillCat</span>
-              <span className="text-base font-bold text-ink-strong tracking-tight">{APP_SHORT_NAME}</span>
-            </span>
+            <span className="text-sm font-semibold text-gray-900 tracking-tight">{APP_SHORT_NAME}</span>
           )}
         </button>
       </DialogTrigger>

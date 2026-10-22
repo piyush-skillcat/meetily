@@ -30,7 +30,7 @@ function formatWhen(startedAt: Date | null): string {
   return `Today · ${new Date().toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}`;
 }
 
-const chip = 'inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-gray-200 bg-gray-50 text-xs text-gray-600';
+const chip = 'inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-gray-200 bg-transparent text-[12px] text-gray-600 hover:bg-gray-100 transition-colors';
 
 export function MeetingHeader({ isRecording, people, onPeopleChange }: MeetingHeaderProps) {
   const { setMeetingTitle } = useTranscripts();
@@ -58,15 +58,15 @@ export function MeetingHeader({ isRecording, people, onPeopleChange }: MeetingHe
   const templateName = availableTemplates.find((t) => t.id === selectedTemplate)?.name;
 
   return (
-    <div className="px-8 pt-6 pb-3 border-b border-gray-100 bg-white">
+    <div>
       <input
         value={title}
         onChange={(e) => handleTitleChange(e.target.value)}
         placeholder="Untitled meeting"
         aria-label="Meeting title"
-        className="w-full bg-transparent text-2xl font-semibold text-gray-900 placeholder:text-gray-300 outline-none"
+        className="w-full bg-transparent text-[28px] leading-tight font-semibold tracking-tight text-gray-900 placeholder:text-gray-300 outline-none"
       />
-      <div className="mt-3 flex flex-wrap items-center gap-2">
+      <div className="mt-4 flex flex-wrap items-center gap-1.5">
         <span className={chip} title={isRecording ? 'Recording in progress' : 'Not recording yet'}>
           <CalendarDays size={13} className="text-gray-400" />
           {formatWhen(startedAt)}
@@ -81,7 +81,7 @@ export function MeetingHeader({ isRecording, people, onPeopleChange }: MeetingHe
             }}
           >
             <SelectTrigger
-              className={`${chip} w-auto gap-1.5 focus:ring-1 focus:ring-blue-500`}
+              className={`${chip} w-auto gap-1.5 shadow-none focus:ring-0 [&>svg:last-child]:h-3 [&>svg:last-child]:w-3`}
               title="How Notesify writes this meeting's notes"
             >
               <LayoutTemplate size={13} className="text-gray-400" />
@@ -98,15 +98,15 @@ export function MeetingHeader({ isRecording, people, onPeopleChange }: MeetingHe
           </Select>
         )}
 
-        <div className={`${chip} flex-1 min-w-[220px] max-w-md`}>
+        <div className={`${chip} flex-1 min-w-[220px] max-w-sm hover:bg-transparent focus-within:border-gray-300`}>
           <Users size={13} className="text-gray-400 shrink-0" />
           <Input
             value={people}
             onChange={(e) => onPeopleChange(e.target.value)}
-            placeholder="Add people & topic: Priya Sharma, Acme Corp"
+            placeholder="Add participants & topic"
             aria-label="People and topic"
             title="Names, companies and terms in this meeting, comma-separated. Live transcription listens for them; names you type in your notes are picked up too."
-            className="h-6 text-xs border-0 shadow-none bg-transparent focus-visible:ring-0 px-0"
+            className="h-6 text-[12px] border-0 shadow-none bg-transparent focus-visible:ring-0 px-0 placeholder:text-gray-500"
           />
         </div>
       </div>

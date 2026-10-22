@@ -7,14 +7,13 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { PenLine, Eraser } from 'lucide-react';
+import { Eraser } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { invoke } from '@tauri-apps/api/core';
 
 // BlockNote touches `document` at construction time; keep it client-only for the static export.
 const NotesPad = dynamic(() => import('@/components/Notes/NotesPad').then(m => m.NotesPad), { ssr: false });
 import { notesDraft } from '@/lib/notesDraft';
-import { Button } from '@/components/ui/button';
 import { MeetingHeader } from './MeetingHeader';
 
 /** Typing pauses this long before the transcription vocabulary is refreshed. */
@@ -80,32 +79,29 @@ export function LiveNotesPanel({ isRecording }: LiveNotesPanelProps) {
   };
 
   return (
-    <div className="flex-1 min-w-0 flex flex-col bg-white overflow-hidden">
-      <MeetingHeader isRecording={isRecording} people={people} onPeopleChange={handlePeopleChange} />
-      <div className="px-8 pt-3 flex items-center gap-2">
-        <PenLine size={14} className="text-gray-400" />
-        <span className="text-xs font-medium uppercase tracking-wide text-gray-500">My notes</span>
-        <span className="text-xs text-gray-400 hidden md:inline">
-          {isRecording
-            ? '— jot down what matters; Notesify fills in the details after the meeting'
-            : '— type here before or during the meeting'}
-        </span>
-        <div className="flex-1" />
-        {hasContent && (
-          <Button variant="ghost" size="sm" onClick={clear} title="Clear notes">
-            <Eraser size={14} />
-          </Button>
-        )}
-      </div>
-      <div className="flex-1 overflow-y-auto pb-32">
-        <div className="max-w-3xl px-4 pt-1">
-          <NotesPad
-            key={`live-${draftVersion}`}
-            initialMarkdown={draft?.markdown ?? ''}
-            initialJson={draft?.json}
-            onChange={handleChange}
-            debounceMs={400}
-          />
+    <div className="flex-1 min-h-0 overflow-y-auto bg-white">
+      <div className="mx-auto w-full max-w-[720px] px-10 pt-14 pb-40">
+        <MeetingHeader isRecording={isRecording} people={people} onPeopleChange={handlePeopleChange} />
+        <div className="group/notes relative mt-6">
+          {hasContent && (
+            <button
+              onClick={clear}
+              title="Clear notes"
+              aria-label="Clear notes"
+              className="absolute -right-8 top-1 h-7 w-7 flex items-center justify-center rounded-md text-gray-400 opacity-0 group-hover/notes:opacity-100 hover:text-gray-900 hover:bg-gray-100 transition-opacity"
+            >
+              <Eraser size={14} />
+            </button>
+          )}
+          <div className="-mx-3">
+            <NotesPad
+              key={`live-${draftVersion}`}
+              initialMarkdown={draft?.markdown ?? ''}
+              initialJson={draft?.json}
+              onChange={handleChange}
+              debounceMs={400}
+            />
+          </div>
         </div>
       </div>
     </div>

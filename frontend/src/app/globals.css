@@ -82,26 +82,26 @@
   /* shadcn/ui semantic layer, expressed with the SkillCat palette (HSL for Tailwind's hsl(var()) usage).
      Light = warm sand, dark = near-black. Values mirror styles/skillcat-tokens.css. */
   :root, [data-theme="light"] {
-    --background: 40 27% 90%;          /* surface.0  #ECE7DE */
-    --foreground: 33 11% 23%;          /* text.body  #403B33 */
-    --card: 0 0% 100%;                 /* surface.2  */
-    --card-foreground: 33 11% 23%;
+    --background: 60 27% 94%;
+    --foreground: 40 2% 30%;
+    --card: 0 0% 100%;
+    --card-foreground: 40 2% 30%;
     --popover: 0 0% 100%;
-    --popover-foreground: 33 11% 23%;
-    --primary: 15 87% 54%;             /* #F05523 */
+    --popover-foreground: 40 2% 30%;
+    --primary: 0 0% 9%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 38 38% 94%;           /* surface.1 #F6F2EB */
-    --secondary-foreground: 33 11% 23%;
-    --muted: 36 34% 88%;               /* ink.800 #EAE3D7 */
-    --muted-foreground: 32 11% 43%;    /* ink.300 #797161 */
-    --accent: 36 34% 88%;
-    --accent-foreground: 30 12% 15%;   /* ink.100 */
+    --secondary: 60 16% 91%;
+    --secondary-foreground: 40 2% 30%;
+    --muted: 60 8% 87%;
+    --muted-foreground: 60 1% 41%;
+    --accent: 60 9% 89%;
+    --accent-foreground: 0 0% 9%;
     --destructive: 356 63% 49%;        /* #CE2E39 */
     --destructive-foreground: 0 0% 100%;
-    --border: 36 27% 85%;              /* border.hairline #E4DCD0 */
-    --input: 36 27% 85%;
-    --ring: 15 87% 54%;
-    --radius: 0.5rem;
+    --border: 60 7% 88%;
+    --input: 0 0% 90%;
+    --ring: 49 85% 57%;
+    --radius: 0.625rem;
     --chart-1: 15 87% 54%;
     --chart-2: 146 64% 33%;
     --chart-3: 211 53% 45%;
@@ -110,25 +110,25 @@
   }
 
   [data-theme="dark"] {
-    --background: 0 0% 5%;             /* surface.0 #0D0D0D */
-    --foreground: 0 0% 85%;            /* text.body #D9D9D9 */
-    --card: 0 0% 12%;                  /* surface.2 #1E1D1D */
-    --card-foreground: 0 0% 85%;
-    --popover: 0 0% 12%;
-    --popover-foreground: 0 0% 85%;
-    --primary: 15 87% 54%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 0 0% 9%;              /* surface.1 #171717 */
-    --secondary-foreground: 0 0% 85%;
-    --muted: 0 0% 15%;                 /* ink.800 #262626 */
-    --muted-foreground: 0 0% 66%;      /* ink.300 #A8A8A8 */
-    --accent: 0 0% 15%;
-    --accent-foreground: 0 0% 94%;
+    --background: 60 3% 15%;
+    --foreground: 69 17% 92%;
+    --card: 60 2% 18%;
+    --card-foreground: 69 17% 92%;
+    --popover: 60 3% 17%;
+    --popover-foreground: 69 17% 92%;
+    --primary: 0 0% 95%;
+    --primary-foreground: 60 3% 15%;
+    --secondary: 60 3% 12%;
+    --secondary-foreground: 69 17% 92%;
+    --muted: 60 2% 16%;
+    --muted-foreground: 0 0% 63%;
+    --accent: 60 2% 20%;
+    --accent-foreground: 0 0% 98%;
     --destructive: 355 100% 56%;       /* #FF1F31 */
     --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 28%;                /* border.hairline #484747 */
-    --input: 0 0% 28%;
-    --ring: 15 87% 54%;
+    --border: 60 2% 22%;
+    --input: 0 0% 29%;
+    --ring: 49 85% 57%;
     --chart-1: 15 87% 54%;
     --chart-2: 151 80% 40%;
     --chart-3: 210 100% 56%;
