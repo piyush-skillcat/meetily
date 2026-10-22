@@ -954,6 +954,9 @@ impl AudioPipeline {
                         self.last_summary_time = std::time::Instant::now();
                     }
 
+                    // Feed the recording UI's live meters (per lane).
+                    super::live_levels::publish(&chunk.device_type, &chunk.data);
+
                     // STEP 1: Add raw audio to ring buffer for mixing
                     // Microphone audio is already normalized at capture level (AudioCapture)
                     // System audio remains raw

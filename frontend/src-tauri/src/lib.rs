@@ -713,6 +713,7 @@ pub fn run() {
             audio::transcription::keyterms::api_get_transcription_glossary,
             audio::transcription::keyterms::api_save_transcription_glossary,
             audio::transcription::keyterms::api_set_meeting_keyterms,
+            audio::live_levels::get_live_audio_levels,
             audio::recording_preferences::get_default_recordings_folder_path,
             audio::recording_preferences::open_recordings_folder,
             audio::recording_preferences::select_recording_folder,

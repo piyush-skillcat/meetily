@@ -10,10 +10,11 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import Analytics from '@/lib/analytics';
 import { useRecordingState } from '@/contexts/RecordingStateContext';
+import { LevelMeter } from '@/components/LevelMeter';
+import { useLiveAudioLevels, useRecordingTimer, formatElapsed } from '@/hooks/useLiveAudioLevels';
 
 interface RecordingControlsProps {
   isRecording: boolean;
-  barHeights: string[];
   onRecordingStop: (callApi?: boolean) => void;
   onRecordingStart: () => void;
   onTranscriptReceived: (summary: SummaryResponse) => void;
@@ -30,7 +31,6 @@ interface RecordingControlsProps {
 
 export const RecordingControls: React.FC<RecordingControlsProps> = ({
   isRecording,
-  barHeights,
   onRecordingStop,
   onRecordingStart,
   onTranscriptReceived,
@@ -44,6 +44,8 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
   // Use global recording state context for pause state (syncs with tray operations)
   const recordingState = useRecordingState();
   const isPaused = recordingState.isPaused;
+  const levels = useLiveAudioLevels(isRecording && !isPaused);
+  const elapsed = useRecordingTimer(isRecording, isPaused);
 
   const [showPlayback, setShowPlayback] = useState(false);
   const [recordingPath, setRecordingPath] = useState<string | null>(null);
@@ -342,7 +344,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
   return (
     <TooltipProvider>
       <div className="flex flex-col space-y-2">
-        <div className="flex items-center space-x-2 bg-white rounded-full shadow-lg px-4 py-2">
+        <div className={`flex items-center gap-3 bg-white rounded-full ${isRecording ? 'pl-4 pr-2' : 'px-1'} py-1.5`}>
           {isProcessing && !isParentProcessing ? (
             <div className="flex items-center space-x-2">
               <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-900"></div>
@@ -397,14 +399,15 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
                             handleStartRecording();
                           }}
                           disabled={isStarting || isProcessing || isRecordingDisabled || isValidatingModel}
-                          className={`w-12 h-12 flex items-center justify-center ${isStarting || isProcessing || isValidatingModel ? 'bg-gray-400' : 'bg-red-500 hover:bg-red-600'
-                            } rounded-full text-white transition-colors relative`}
+                          className={`h-11 pl-4 pr-5 flex items-center gap-2 ${isStarting || isProcessing || isValidatingModel ? 'bg-gray-400' : 'bg-red-500 hover:bg-red-600'
+                            } rounded-full text-white text-sm font-medium transition-colors relative`}
                         >
-                          {isValidatingModel ? (
-                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                          {isValidatingModel || isStarting ? (
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                           ) : (
-                            <Mic size={20} />
+                            <Mic size={16} />
                           )}
+                          {isValidatingModel ? 'Checking speech recognition…' : isStarting ? 'Starting…' : 'Start recording'}
                         </button>
                       </TooltipTrigger>
                       <TooltipContent>
@@ -412,8 +415,21 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
                       </TooltipContent>
                     </Tooltip>
                   ) : (
-                    // Recording controls (pause/resume + stop)
+                    // Recording controls: timer, live meters, pause/resume, stop
                     <>
+                      <div
+                        className="flex items-center gap-2 pr-1 tabular-nums text-sm font-medium text-gray-800 min-w-[64px]"
+                        title={isPaused ? 'Recording paused' : 'Recording'}
+                      >
+                        <span
+                          className={`h-2.5 w-2.5 rounded-full ${isPaused ? 'bg-amber-500' : 'bg-red-500 animate-pulse'}`}
+                        />
+                        {isPaused ? 'Paused' : formatElapsed(elapsed)}
+                      </div>
+                      <div className="w-px h-6 bg-gray-200" />
+                      <LevelMeter level={levels.mic} source="you" paused={isPaused} />
+                      <LevelMeter level={levels.system} source="them" paused={isPaused} />
+                      <div className="w-px h-6 bg-gray-200" />
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <button
@@ -471,19 +487,6 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
                     </>
                   )}
 
-                  <div className="flex items-center space-x-1 mx-4">
-                    {barHeights.map((height, index) => (
-                      <div
-                        key={index}
-                        className={`w-1 rounded-full transition-all duration-200 ${isPaused ? 'bg-orange-500' : 'bg-red-500'
-                          }`}
-                        style={{
-                          height: isRecording && !isPaused ? height : '4px',
-                          opacity: isPaused ? 0.6 : 1,
-                        }}
-                      />
-                    ))}
-                  </div>
                 </>
               )}
             </>
