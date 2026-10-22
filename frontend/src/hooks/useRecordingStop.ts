@@ -244,7 +244,10 @@ export function useRecordingStop(
 
         // Get folder_path and meeting_name from recording-stopped event
         const folderPath = sessionStorage.getItem('last_recording_folder_path');
-        const savedMeetingName = sessionStorage.getItem('last_recording_meeting_name');
+        // A title the user typed in the meeting header (possibly mid-recording)
+        // wins over the name the backend started the recording with.
+        const userTitle = notesDraft.readTitle().trim();
+        const savedMeetingName = userTitle || sessionStorage.getItem('last_recording_meeting_name');
 
         console.log('💾 Saving COMPLETE transcripts to database...', {
           transcript_count: freshTranscripts.length,

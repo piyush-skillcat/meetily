@@ -182,6 +182,22 @@ fn build_enhance_user_prompt(notes_markdown: &str, transcript: &str, context: &s
     p
 }
 
+/// Titles Notesify makes up itself ("Meeting 22_10_26_15_30_42"), which the AI
+/// title may replace (see generateMeetingTitle in src/hooks/useRecordingStart.ts).
+fn is_generated_title(title: &str) -> bool {
+    let t = title.trim();
+    if t.is_empty() || t == "+ New Call" || t == "New Meeting" {
+        return true;
+    }
+    match t.strip_prefix("Meeting ") {
+        Some(stamp) => {
+            let parts: Vec<&str> = stamp.split('_').collect();
+            parts.len() == 6 && parts.iter().all(|p| p.len() == 2 && p.chars().all(|c| c.is_ascii_digit()))
+        }
+        None => false,
+    }
+}
+
 /// Strip a leading `# Title` line, returning (title, body).
 fn split_title(markdown: &str) -> (Option<String>, String) {
     let title = extract_meeting_name_from_markdown(markdown).filter(|t| !t.trim().is_empty());
@@ -312,9 +328,18 @@ pub async fn api_enhance_notes<R: Runtime>(
                 let cleaned = clean_llm_markdown_output(&raw);
                 let (title, body) = split_title(&cleaned);
 
+                // Only replace a title Notesify generated; one the user typed stays.
                 if let Some(t) = title.as_deref() {
-                    if let Err(e) = MeetingsRepository::update_meeting_name(&pool, &meeting_id_bg, t).await {
-                        error!("Failed to update meeting title: {}", e);
+                    let current: Option<String> = sqlx::query_scalar("SELECT title FROM meetings WHERE id = ?")
+                        .bind(&meeting_id_bg)
+                        .fetch_optional(&pool)
+                        .await
+                        .ok()
+                        .flatten();
+                    if current.as_deref().map_or(true, is_generated_title) {
+                        if let Err(e) = MeetingsRepository::update_meeting_name(&pool, &meeting_id_bg, t).await {
+                            error!("Failed to update meeting title: {}", e);
+                        }
                     }
                 }
 
@@ -397,6 +422,16 @@ mod tests {
         let (t, body) = split_title("# Pricing sync\n\n## Decisions\n- ship it");
         assert_eq!(t.as_deref(), Some("Pricing sync"));
         assert!(body.starts_with("## Decisions"));
+    }
+
+    #[test]
+    fn only_generated_titles_are_replaceable() {
+        assert!(is_generated_title("Meeting 22_10_26_15_30_42"));
+        assert!(is_generated_title("  "));
+        assert!(is_generated_title("+ New Call"));
+        assert!(!is_generated_title("Acme pricing sync"));
+        assert!(!is_generated_title("Meeting with Priya"));
+        assert!(!is_generated_title("Meeting 22_10_26"));
     }
 
     #[test]

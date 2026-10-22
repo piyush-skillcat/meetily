@@ -7,7 +7,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { PenLine, Eraser, Users } from 'lucide-react';
+import { PenLine, Eraser } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { invoke } from '@tauri-apps/api/core';
 
@@ -15,7 +15,7 @@ import { invoke } from '@tauri-apps/api/core';
 const NotesPad = dynamic(() => import('@/components/Notes/NotesPad').then(m => m.NotesPad), { ssr: false });
 import { notesDraft } from '@/lib/notesDraft';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { MeetingHeader } from './MeetingHeader';
 
 /** Typing pauses this long before the transcription vocabulary is refreshed. */
 const KEYTERM_SYNC_DELAY_MS = 1500;
@@ -81,9 +81,10 @@ export function LiveNotesPanel({ isRecording }: LiveNotesPanelProps) {
 
   return (
     <div className="flex-1 min-w-0 flex flex-col bg-white overflow-hidden">
-      <div className="sticky top-0 z-10 bg-white px-6 pt-4 pb-2 border-b border-gray-100 flex items-center gap-2">
-        <PenLine size={16} className="text-gray-500" />
-        <span className="text-sm font-medium text-gray-800">My notes</span>
+      <MeetingHeader isRecording={isRecording} people={people} onPeopleChange={handlePeopleChange} />
+      <div className="px-8 pt-3 flex items-center gap-2">
+        <PenLine size={14} className="text-gray-400" />
+        <span className="text-xs font-medium uppercase tracking-wide text-gray-500">My notes</span>
         <span className="text-xs text-gray-400 hidden md:inline">
           {isRecording
             ? '— jot down what matters; Notesify fills in the details after the meeting'
@@ -96,18 +97,8 @@ export function LiveNotesPanel({ isRecording }: LiveNotesPanelProps) {
           </Button>
         )}
       </div>
-      <div className="px-6 py-2 border-b border-gray-100 flex items-center gap-2">
-        <Users size={14} className="text-gray-400 shrink-0" />
-        <Input
-          value={people}
-          onChange={(e) => handlePeopleChange(e.target.value)}
-          placeholder="People & topic: Priya Sharma, Acme Corp, SOC2 audit"
-          title="Names, companies and terms in this meeting, comma-separated. Live transcription listens for them; names you type in your notes are picked up too."
-          className="h-8 text-sm border-0 shadow-none focus-visible:ring-0 px-1"
-        />
-      </div>
       <div className="flex-1 overflow-y-auto pb-32">
-        <div className="max-w-3xl px-2 pt-2">
+        <div className="max-w-3xl px-4 pt-1">
           <NotesPad
             key={`live-${draftVersion}`}
             initialMarkdown={draft?.markdown ?? ''}

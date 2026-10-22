@@ -39,13 +39,25 @@ function write(key: string, draft: NotesDraft | null) {
 
 /** "People & topic" for the meeting being recorded; cleared with the draft once the meeting is saved. */
 const LIVE_PEOPLE_KEY = 'meetily:people-draft:live';
+/** Title typed in the meeting header; wins over generated titles. */
+const LIVE_TITLE_KEY = 'meetily:title-draft:live';
 
-function writePeople(text: string) {
+function writeText(key: string, text: string) {
   try {
-    if (text.trim()) localStorage.setItem(LIVE_PEOPLE_KEY, text);
-    else localStorage.removeItem(LIVE_PEOPLE_KEY);
+    if (text.trim()) localStorage.setItem(key, text);
+    else localStorage.removeItem(key);
   } catch {}
 }
+
+function readText(key: string): string {
+  try {
+    return localStorage.getItem(key) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+const writePeople = (text: string) => writeText(LIVE_PEOPLE_KEY, text);
 
 export const notesDraft = {
   readLive: () => read(LIVE_DRAFT_KEY),
@@ -53,17 +65,14 @@ export const notesDraft = {
     write(LIVE_DRAFT_KEY, { markdown, json, updatedAt: Date.now() }),
   /** Clears the notes only (the "Clear notes" button). */
   clearLiveNotes: () => write(LIVE_DRAFT_KEY, null),
-  /** Clears the whole live draft (notes and people) once the meeting is saved. */
+  /** Clears the whole live draft (notes, people and title) once the meeting is saved. */
   clearLive: () => {
     write(LIVE_DRAFT_KEY, null);
     writePeople('');
+    writeText(LIVE_TITLE_KEY, '');
   },
-  readPeople: (): string => {
-    try {
-      return localStorage.getItem(LIVE_PEOPLE_KEY) ?? '';
-    } catch {
-      return '';
-    }
-  },
+  readPeople: (): string => readText(LIVE_PEOPLE_KEY),
   writePeople,
+  readTitle: (): string => readText(LIVE_TITLE_KEY),
+  writeTitle: (text: string) => writeText(LIVE_TITLE_KEY, text),
 };
