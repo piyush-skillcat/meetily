@@ -30,9 +30,14 @@ what you missed.
 
 ### Transcription
 - **Who said what**: mic and system audio are run through separate voice
-  detection, so every segment is tagged `mic` (You) or `system` (Them). A
-  crosstalk gate drops mic windows that are just speaker bleed (headphones
-  still give the cleanest split).
+  detection, so every segment is tagged `mic` (You) or `system` (Them).
+- **Echo cancellation** (Linux): WebRTC AEC3 removes the speakers' sound from
+  the mic, using the system audio as the reference, so you can use laptop
+  speakers and still keep your own words when both sides talk at once. A
+  crosstalk gate still drops mic windows whose leftover signal tracks the
+  system audio (headphones remain the cleanest setup). Building needs
+  `webrtc-audio-processing-devel` (Fedora) or `libwebrtc-audio-processing-dev`
+  (Debian/Ubuntu).
 - **Cloud speech-to-text** (Settings → Transcription): OpenAI
   (`gpt-4o-transcribe`, `gpt-4o-mini-transcribe`, `whisper-1`) and Groq
   (`whisper-large-v3`, `whisper-large-v3-turbo`). Speech segments are uploaded as

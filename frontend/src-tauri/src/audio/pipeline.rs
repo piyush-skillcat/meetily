@@ -819,6 +819,9 @@ pub struct AudioPipeline {
     // PROFESSIONAL AUDIO MIXING: Ring buffer + RMS-based mixer
     ring_buffer: AudioMixerRingBuffer,
     mixer: ProfessionalAudioMixer,
+    /// Removes speaker echo from the mic using the system lane as reference
+    /// (None where WebRTC AEC3 is unavailable).
+    echo_canceller: Option<super::echo_canceller::EchoCanceller>,
     // Recording sender for pre-mixed audio
     recording_sender_for_mixed: Option<mpsc::UnboundedSender<AudioChunk>>,
 }
@@ -895,6 +898,7 @@ impl AudioPipeline {
             // Initialize professional audio mixing
             ring_buffer,
             mixer,
+            echo_canceller: super::echo_canceller::EchoCanceller::new(sample_rate),
             recording_sender_for_mixed: None,  // Will be set by manager
         }
     }
@@ -958,6 +962,15 @@ impl AudioPipeline {
                     // STEP 2: Mix audio in fixed windows when both streams have sufficient data
                     while self.ring_buffer.can_mix() {
                         if let Some((mic_window, sys_window)) = self.ring_buffer.extract_window() {
+                            // STEP 2a: Cancel speaker echo in the mic, with system audio as
+                            // the far-end reference. Both the transcription lane and the
+                            // saved recording use the cleaned mic.
+                            let aec_active = self.echo_canceller.is_some();
+                            let mic_window = match self.echo_canceller.as_mut() {
+                                Some(aec) => aec.process(&mic_window, &sys_window),
+                                None => mic_window,
+                            };
+
                             // Simple mixing without aggressive ducking
                             let mixed_clean = self.mixer.mix_window(&mic_window, &sys_window);
 
@@ -977,9 +990,13 @@ impl AudioPipeline {
                             // system signal, so a high cross-correlation (any lag within
                             // ±BLEED_MAX_LAG_MS) means the mic window is the remote party, not
                             // the user. Double-talk keeps correlation low and passes through.
+                            // With echo cancellation the mic has already been cleaned, so only
+                            // a residual that still tracks the system signal counts as bleed;
+                            // the level rule would drop the user speaking softly over loud
+                            // remote audio.
                             let mic_is_bleed = sys_rms > 1e-3
                                 && mic_rms > 1e-4
-                                && (mic_rms < sys_rms * MIC_BLEED_RATIO
+                                && ((!aec_active && mic_rms < sys_rms * MIC_BLEED_RATIO)
                                     || bleed_correlation(&mic_window, &sys_window, self.sample_rate) > BLEED_CORR_THRESHOLD);
                             // Pre-VAD gate + level alignment: windows that don't rise clearly
                             // above each source's own noise floor are fed to the VAD as

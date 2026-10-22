@@ -17,6 +17,7 @@ pub mod ffmpeg_mixer;  // NEW: FFmpeg-style adaptive audio mixer
 
 // New simplified audio system
 pub mod recording_state;
+pub mod echo_canceller;
 pub mod pipeline;
 #[cfg(target_os = "linux")]
 pub mod meeting_detector;
