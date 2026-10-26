@@ -4,13 +4,43 @@
  * app/layout.tsx only in development, and it does nothing inside the real
  * app, where window.__TAURI_INTERNALS__ already exists.
  *
- * Add ?recording=1 to the URL to preview the recording state.
+ * Add ?recording=1 to the URL to preview the recording state. A saved
+ * meeting is at /meeting-details?id=demo-1 (add &summary=0 for one that has
+ * not been enhanced yet).
  */
 (function () {
   if (window.__TAURI_INTERNALS__) return;
 
   var params = new URLSearchParams(location.search);
   var recording = params.get('recording') === '1';
+  var hasSummary = params.get('summary') !== '0';
+  var meetingStart = new Date(Date.now() - 3 * 3600 * 1000).toISOString();
+  var lines = [
+    ['You', 'Okay, so the goal today is to lock the content portal integration plan.'],
+    ['Them', 'Right. We have the API spec from their side, the auth piece is the open question.'],
+    ['You', 'Can we do SSO through our existing provider, or do they need their own tenant?'],
+    ['Them', 'Their own tenant, unfortunately. I can get the credentials by Thursday.'],
+    ['You', 'Fine. Then content sync is nightly to start, real-time later.'],
+    ['Them', 'Agreed. And reporting goes into the same dashboard the course team already uses.'],
+  ];
+  var transcripts = lines.map(function (l, i) {
+    return {
+      id: 't' + i, meeting_id: 'demo-1', text: l[1], speaker: l[0] === 'You' ? 'mic' : 'system',
+      timestamp: meetingStart, audio_start_time: i * 14, audio_end_time: i * 14 + 12, confidence: 0.94,
+    };
+  });
+  var summaryMarkdown = [
+    '## Decisions',
+    '- Content sync runs **nightly** at launch; real-time sync is a later phase.',
+    '- Reporting lands in the existing course-team dashboard.',
+    '',
+    '## Open questions',
+    '- Auth: the partner needs its own tenant, so SSO through our provider is out.',
+    '',
+    '## Action items',
+    '- [ ] Share tenant credentials (Them, Thursday)',
+    '- [ ] Draft the nightly sync job and failure alerts (You)',
+  ].join('\n');
   var tick = 0;
   var nextId = 1;
 
@@ -39,6 +69,18 @@
       { id: 'customer_call', name: 'Customer call', description: 'Needs, objections, follow-ups' },
     ],
     api_get_default_template: 'auto',
+    api_get_meeting_metadata: {
+      id: 'demo-1', title: 'Content Portal Integration & Strategy',
+      created_at: meetingStart, updated_at: meetingStart, folder_path: '/tmp/demo-1',
+    },
+    api_get_meeting_transcripts: { transcripts: transcripts, total_count: transcripts.length, has_more: false },
+    api_get_summary: hasSummary
+      ? { status: 'completed', data: { markdown: summaryMarkdown } }
+      : { status: 'idle', data: null },
+    api_get_meeting_notes: {
+      meeting_id: 'demo-1', notes_markdown: '- auth?\n- nightly sync', notes_json: null,
+      created_at: meetingStart, updated_at: meetingStart,
+    },
     api_get_meetings: [
       { id: 'demo-1', title: 'Content Portal Integration & Strategy' },
       { id: 'demo-2', title: 'Term Sheet Review and Compensation' },

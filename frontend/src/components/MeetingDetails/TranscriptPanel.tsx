@@ -5,11 +5,10 @@ import { TranscriptView } from '@/components/TranscriptView';
 import { VirtualizedTranscriptView } from '@/components/VirtualizedTranscriptView';
 import { TranscriptButtonGroup } from './TranscriptButtonGroup';
 import { useMemo } from 'react';
+import { X } from 'lucide-react';
 
 interface TranscriptPanelProps {
   transcripts: Transcript[];
-  customPrompt: string;
-  onPromptChange: (value: string) => void;
   onCopyTranscript: () => void;
   onOpenMeetingFolder: () => Promise<void>;
   isRecording: boolean;
@@ -28,12 +27,13 @@ interface TranscriptPanelProps {
   meetingId?: string;
   meetingFolderPath?: string | null;
   onRefetchTranscripts?: () => Promise<void>;
+
+  /** Shows a close button in the header (drawer layout) */
+  onClose?: () => void;
 }
 
 export function TranscriptPanel({
   transcripts,
-  customPrompt,
-  onPromptChange,
   onCopyTranscript,
   onOpenMeetingFolder,
   isRecording,
@@ -48,6 +48,7 @@ export function TranscriptPanel({
   meetingId,
   meetingFolderPath,
   onRefetchTranscripts,
+  onClose,
 }: TranscriptPanelProps) {
   // Convert transcripts to segments if pagination is not used but we want virtualization
   const convertedSegments = useMemo(() => {
@@ -66,9 +67,12 @@ export function TranscriptPanel({
   }, [transcripts, usePagination, segments]);
 
   return (
-    <div className="hidden md:flex md:w-1/4 lg:w-1/3 min-w-0 border-r border-gray-200 bg-white flex-col relative shrink-0">
+    <div className="h-full w-full min-w-0 bg-white flex flex-col relative">
       {/* Title area */}
-      <div className="p-4 border-b border-gray-200">
+      <div className="h-12 shrink-0 px-4 flex items-center gap-2 border-b border-gray-200">
+        <span className="text-[13px] font-medium text-gray-900">Transcript</span>
+        {/* Icon-only in the narrow drawer; each button keeps its tooltip */}
+        <div className="ml-auto min-w-0 [&_button>span]:hidden">
         <TranscriptButtonGroup
           transcriptCount={usePagination ? (totalCount ?? convertedSegments.length) : (transcripts?.length || 0)}
           onCopyTranscript={onCopyTranscript}
@@ -77,6 +81,18 @@ export function TranscriptPanel({
           meetingFolderPath={meetingFolderPath}
           onRefetchTranscripts={onRefetchTranscripts}
         />
+        </div>
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-7 w-7 flex items-center justify-center rounded-md text-gray-500 hover:text-gray-900 hover:bg-gray-100"
+            title="Hide transcript"
+            aria-label="Hide transcript"
+          >
+            <X size={15} />
+          </button>
+        )}
       </div>
 
       {/* Transcript content - use virtualized view for better performance */}
@@ -97,18 +113,6 @@ export function TranscriptPanel({
           onLoadMore={onLoadMore}
         />
       </div>
-
-      {/* Custom prompt input at bottom of transcript section */}
-      {!isRecording && convertedSegments.length > 0 && (
-        <div className="p-1 border-t border-gray-200">
-          <textarea
-            placeholder="Add context for AI summary. For example people involved, meeting overview, objective etc..."
-            className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white shadow-sm min-h-[80px] resize-y"
-            value={customPrompt}
-            onChange={(e) => onPromptChange(e.target.value)}
-          />
-        </div>
-      )}
     </div>
   );
 }

@@ -155,6 +155,8 @@ html, body {
 
 /* Focus: 2px gold ring */
 :focus-visible { outline: none; box-shadow: 0 0 0 2px rgb(var(--sc-primary-rgb) / .7); }
+/* Document editors are the page itself; the caret shows focus */
+.ProseMirror:focus-visible { box-shadow: none; }
 
 /* Subtle corner glow on the main canvas (hero rule: offset, never centered) */
 .sc-canvas { background-image: var(--sc-glow); }

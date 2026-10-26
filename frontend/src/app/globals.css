@@ -248,3 +248,13 @@
 
 /* Notes pad: tighter padding than the summary editor */
 .notes-pad .bn-editor { padding-inline: 0.75rem; }
+
+/* Saved meeting document: editor text lines up with the title, and headings
+   read as section labels rather than page titles */
+.meeting-doc .bn-editor { padding-inline: 0.75rem; }
+.meeting-doc [data-content-type=heading] { --level: 1.3em; font-weight: 600; letter-spacing: -0.01em; }
+.meeting-doc [data-content-type=heading][data-level="2"] { --level: 1.12em; }
+.meeting-doc [data-content-type=heading][data-level="3"] { --level: 1em; }
+.meeting-doc .bn-block-group > .bn-block-outer:not(:first-child) > .bn-block > .bn-block-content[data-content-type=heading] { padding-top: 0.9em; }
+.meeting-doc .stream-md h1 { font-size: 1.3em; font-weight: 600; }
+.meeting-doc .stream-md h2 { font-size: 1.12em; }

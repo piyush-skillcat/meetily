@@ -2,20 +2,18 @@
 
 import { Summary, SummaryResponse, Transcript } from '@/types';
 import { BlockNoteSummaryView, BlockNoteSummaryViewRef } from '@/components/AISummary/BlockNoteSummaryView';
-import { EmptyStateSummary } from '@/components/EmptyStateSummary';
 import { ModelConfig } from '@/components/ModelSettingsModal';
-import { SummaryGeneratorButtonGroup } from './SummaryGeneratorButtonGroup';
+import { SummaryGeneratorButtonGroup, metaChip } from './SummaryGeneratorButtonGroup';
 import { SummaryUpdaterButtonGroup } from './SummaryUpdaterButtonGroup';
 import dynamic from 'next/dynamic';
 const NotesPad = dynamic(() => import('@/components/Notes/NotesPad').then(m => m.NotesPad), { ssr: false });
 const AskPanelLazy = dynamic(() => import('./AskPanel').then(m => m.AskPanel), { ssr: false });
 import Analytics from '@/lib/analytics';
-import { useEffect, useRef, useState, RefObject } from 'react';
+import { useEffect, useRef, useState, RefObject, ReactNode } from 'react';
 import { toast } from 'sonner';
-import { Languages, ChevronDown, Sparkles, PenLine, MessageSquare, Loader2 } from 'lucide-react';
+import { Languages, ChevronDown, Sparkles, Loader2, CalendarDays, Square } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Button } from '@/components/ui/button';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { LanguagePickerPopover } from '@/components/LanguagePickerPopover';
 import { useRecentLanguages } from '@/hooks/useRecentLanguages';
@@ -81,6 +79,10 @@ interface SummaryPanelProps {
   onTabChange: (tab: SummaryTab) => void;
   /** Who said what; passed through to AskPanel via provider/model */
   totalTranscriptCount?: number;
+  /** Edits the optional instructions sent with Enhance */
+  onPromptChange: (value: string) => void;
+  /** Persists the title (called on blur when it changed) */
+  onSaveTitle: () => Promise<unknown>;
 }
 
 export function SummaryPanel({
@@ -121,6 +123,9 @@ export function SummaryPanel({
   activeTab,
   onTabChange,
   totalTranscriptCount,
+  onPromptChange,
+  onSaveTitle,
+  onTitleChange,
 }: SummaryPanelProps) {
   const [summaryLang, setSummaryLang] = useState<string | null>(null);
   const [summaryLangStorage, setSummaryLangStorage] = useState<SummaryLanguageStorage>('metadata');
@@ -140,7 +145,8 @@ export function SummaryPanel({
   } | null>(null);
   activeMeetingIdRef.current = meeting.id;
   const { addRecent } = useRecentLanguages();
-  const streamScrollRef = useRef<HTMLDivElement>(null);
+  const docScrollRef = useRef<HTMLDivElement>(null);
+  const generateRef = useRef<(() => void) | null>(null);
 
   const effectiveLangLabel = summaryLang ? labelForCode(summaryLang) : 'Auto';
   const isLocalFallbackLanguage = summaryLangStorage === 'local_fallback';
@@ -175,8 +181,8 @@ export function SummaryPanel({
 
   // Keep the streaming preview pinned to the bottom
   useEffect(() => {
-    const el = streamScrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    const el = docScrollRef.current;
+    if (el && streamText) el.scrollTop = el.scrollHeight;
   }, [streamText]);
 
   const persistLatestLanguageSelection = async () => {
@@ -251,19 +257,19 @@ export function SummaryPanel({
   const languageSlot = (
     <Popover open={langPickerOpen} onOpenChange={setLangPickerOpen}>
       <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
+        <button
+          type="button"
+          className={metaChip}
           title={`Notes language: ${effectiveLangLabel}${isLocalFallbackLanguage ? ' (saved on this device)' : ''}`}
           aria-label="Set notes language"
         >
-          <Languages size={18} />
-          <span className="hidden lg:inline">{effectiveLangLabel}</span>
-          <ChevronDown size={14} className="text-gray-400" />
-        </Button>
+          <Languages size={13} className="text-gray-400" />
+          <span>{effectiveLangLabel}</span>
+          <ChevronDown size={12} className="text-gray-400" />
+        </button>
       </PopoverTrigger>
       <PopoverContent
-        align="end"
+        align="start"
         className="w-auto p-0 border-0 shadow-none bg-transparent"
       >
         <LanguagePickerPopover
@@ -276,158 +282,245 @@ export function SummaryPanel({
     </Popover>
   );
 
-  const generatorGroup = (
-    <SummaryGeneratorButtonGroup
-      modelConfig={modelConfig}
-      setModelConfig={setModelConfig}
-      onSaveModelConfig={onSaveModelConfig}
-      onGenerateSummary={onGenerateSummary}
-      onStopGeneration={onStopGeneration}
-      customPrompt={customPrompt}
-      summaryStatus={summaryStatus}
-      availableTemplates={availableTemplates}
-      selectedTemplate={selectedTemplate}
-      onTemplateSelect={onTemplateSelect}
-      onRefreshTemplates={onRefreshTemplates}
-      hasTranscripts={hasTranscripts}
-      hasSummary={!!aiSummary}
-      hasNotes={hasNotes}
-      isModelConfigLoading={isModelConfigLoading}
-      onOpenModelSettings={onOpenModelSettings}
-      languageSlot={hasTranscripts ? languageSlot : undefined}
-    />
-  );
+  const canGenerate = hasTranscripts || hasNotes;
+  const mainLabel = aiSummary ? 'Re-enhance' : hasNotes ? 'Enhance notes' : 'Generate notes';
+  const generate = () => {
+    Analytics.trackButtonClick('generate_summary', 'meeting_details');
+    generateRef.current?.();
+  };
 
-  const tabButton = (tab: SummaryTab, label: string, Icon: typeof Sparkles) => (
+  const createdAt = new Date(meeting.created_at);
+  const whenLabel = Number.isNaN(createdAt.getTime())
+    ? null
+    : `${createdAt.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })} · ${createdAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+
+  const tabButton = (tab: SummaryTab, label: string) => (
     <button
+      role="tab"
+      aria-selected={activeTab === tab}
       onClick={() => onTabChange(tab)}
-      className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-colors ${
-        activeTab === tab ? 'bg-ink-strong text-surface-0' : 'text-ink-muted hover:bg-gray-100'
+      className={`-mb-px pb-2.5 text-[13px] font-medium border-b-2 transition-colors ${
+        activeTab === tab
+          ? 'border-gray-900 text-gray-900'
+          : 'border-transparent text-gray-500 hover:text-gray-900'
       }`}
     >
-      <Icon size={15} />
-      <span>{label}</span>
+      {label}
     </button>
   );
 
-  return (
-    <div className="flex-1 min-w-0 flex flex-col bg-white overflow-hidden">
-      {/* Header: tabs + actions */}
-      <div className="px-4 py-3 border-b border-gray-200 flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-lg p-1">
-          {tabButton('enhanced', 'Enhanced notes', Sparkles)}
-          {tabButton('notes', hasNotes ? 'My notes' : 'My notes', PenLine)}
-          {tabButton('ask', 'Ask', MessageSquare)}
-        </div>
-        <div className="flex-1" />
-        {activeTab === 'enhanced' && (
-          <div className="flex items-center gap-2">
-            {generatorGroup}
-            {aiSummary && !isSummaryLoading && (
-              <SummaryUpdaterButtonGroup
-                isSaving={isSaving}
-                isDirty={isTitleDirty || (summaryRef.current?.isDirty || false)}
-                onSave={onSaveAll}
-                onCopy={onCopySummary}
-                onFind={() => { }}
-                onOpenFolder={onOpenFolder}
-                hasSummary={!!aiSummary}
-              />
-            )}
-          </div>
+  // Title, meeting facts and tabs: the top of the meeting document
+  const header = (
+    <>
+      <input
+        value={meetingTitle}
+        onChange={(e) => onTitleChange(e.target.value)}
+        onBlur={() => { if (isTitleDirty) void onSaveTitle(); }}
+        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+        placeholder="Untitled meeting"
+        aria-label="Meeting title"
+        className="w-full bg-transparent text-[28px] leading-tight font-semibold tracking-tight text-gray-900 placeholder:text-gray-300 outline-none"
+      />
+      <div className="mt-4 flex flex-wrap items-center gap-1.5">
+        {whenLabel && (
+          <span className={`${metaChip} hover:bg-transparent hover:text-gray-600`}>
+            <CalendarDays size={13} className="text-gray-400" />
+            {whenLabel}
+          </span>
         )}
-        {activeTab === 'notes' && (
-          <div className="flex items-center gap-2">
-            {generatorGroup}
+        <SummaryGeneratorButtonGroup
+          layout="chips"
+          generateRef={generateRef}
+          modelConfig={modelConfig}
+          setModelConfig={setModelConfig}
+          onSaveModelConfig={onSaveModelConfig}
+          onGenerateSummary={onGenerateSummary}
+          onStopGeneration={onStopGeneration}
+          customPrompt={customPrompt}
+          summaryStatus={summaryStatus}
+          availableTemplates={availableTemplates}
+          selectedTemplate={selectedTemplate}
+          onTemplateSelect={onTemplateSelect}
+          onRefreshTemplates={onRefreshTemplates}
+          hasTranscripts={hasTranscripts}
+          hasSummary={!!aiSummary}
+          hasNotes={hasNotes}
+          isModelConfigLoading={isModelConfigLoading}
+          onOpenModelSettings={onOpenModelSettings}
+          languageSlot={hasTranscripts ? languageSlot : undefined}
+        />
+      </div>
+
+      <div role="tablist" className="mt-8 flex items-center gap-5 border-b border-gray-200">
+        {tabButton('enhanced', 'Enhanced notes')}
+        {tabButton('notes', 'My notes')}
+        {tabButton('ask', 'Ask')}
+        <div className="flex-1" />
+        {activeTab === 'enhanced' && aiSummary && !isSummaryLoading && (
+          <div className="-mt-1.5 pb-1.5">
+            <SummaryUpdaterButtonGroup
+              isSaving={isSaving}
+              isDirty={isTitleDirty || (summaryRef.current?.isDirty || false)}
+              onSave={onSaveAll}
+              onCopy={onCopySummary}
+              onFind={() => { }}
+              onOpenFolder={onOpenFolder}
+              hasSummary={!!aiSummary}
+            />
           </div>
         )}
       </div>
+    </>
+  );
 
-      {/* Body */}
-      {activeTab === 'ask' ? (
-        <AskPanelLazy meetingId={meeting.id} />
-      ) : activeTab === 'notes' ? (
-        <div className="flex-1 overflow-y-auto min-h-0">
-          <div className="px-6 pt-4 pb-2 text-xs text-gray-500">
-            Your own notes. Hit <span className="font-medium text-gray-700">Enhance notes</span> to have the AI fill in details from the transcript. Your original notes stay here.
-          </div>
-          {notesLoading ? (
-            <div className="px-6 text-sm text-gray-400">Loading…</div>
-          ) : (
-            <div className="px-2 pb-10">
-              <NotesPad
-                key={`${meeting.id}-notes`}
-                initialMarkdown={notesMarkdown}
-                initialJson={notesJson}
-                onChange={onNotesChange}
-              />
-            </div>
-          )}
-        </div>
-      ) : isSummaryLoading ? (
-        <div className="flex flex-col flex-1 min-h-0">
-          <div className="flex items-center gap-2 px-6 py-2 text-sm text-gray-500 border-b border-gray-100">
-            <Loader2 size={14} className="animate-spin" />
-            <span>{streamText ? 'Writing your notes…' : getSummaryStatusMessage(summaryStatus) || 'Reading the transcript…'}</span>
-          </div>
-          <div ref={streamScrollRef} className="flex-1 overflow-y-auto px-8 py-4">
-            {streamText ? (
-              <div className="stream-md max-w-3xl">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamText}</ReactMarkdown>
-                <span className="inline-block w-1.5 h-4 bg-gray-400 animate-pulse align-middle ml-0.5" />
-              </div>
-            ) : (
-              <div className="flex items-center justify-center h-full">
-                <div className="text-center">
-                  <div className="inline-block animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500 mb-3"></div>
-                  <p className="text-gray-500 text-sm">Reading the transcript…</p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      ) : !aiSummary ? (
-        <div className="flex flex-col h-full">
-          <EmptyStateSummary
-            onGenerate={() => onGenerateSummary(customPrompt)}
-            hasModel={modelConfig.provider !== null && modelConfig.model !== null}
-            isGenerating={isSummaryLoading}
-          />
-          {hasNotes && (
-            <p className="text-center text-xs text-gray-400 -mt-4">
-              You have notes for this meeting. Enhancing will keep them and add what you missed.
-            </p>
-          )}
-        </div>
-      ) : (
-        <div className="flex-1 overflow-y-auto min-h-0">
-          <div className="p-6 w-full">
-            <BlockNoteSummaryView
-              ref={summaryRef}
-              summaryData={aiSummary}
-              onSave={onSaveSummary}
-              onSummaryChange={onSummaryChange}
-              onDirtyChange={onDirtyChange}
-              status={summaryStatus}
-              error={summaryError}
-              onRegenerateSummary={() => {
-                Analytics.trackButtonClick('regenerate_summary', 'meeting_details');
-                onRegenerateSummary();
-              }}
-              meeting={{
-                id: meeting.id,
-                title: meetingTitle,
-                created_at: meeting.created_at
-              }}
+  let body: ReactNode;
+  if (activeTab === 'notes') {
+    body = (
+      <>
+        <p className="mt-4 mb-2 text-[12px] text-gray-500">
+          Your own notes, kept as you wrote them. Enhancing builds on them with details from the transcript.
+        </p>
+        {notesLoading ? (
+          <div className="text-sm text-gray-400">Loading…</div>
+        ) : (
+          <div className="-mx-3">
+            <NotesPad
+              key={`${meeting.id}-notes`}
+              initialMarkdown={notesMarkdown}
+              initialJson={notesJson}
+              onChange={onNotesChange}
             />
           </div>
-          {summaryStatus === 'error' && summaryError && (
-            <div className="mx-6 mb-6 p-4 rounded-lg bg-red-50 text-red-700">
-              <p className="text-sm font-medium">{summaryError}</p>
-            </div>
-          )}
+        )}
+      </>
+    );
+  } else if (isSummaryLoading) {
+    body = (
+      <div className="mt-5">
+        <div className="mb-3 flex items-center gap-2 text-[12px] text-gray-500">
+          <Loader2 size={13} className="animate-spin" />
+          <span>{streamText ? 'Writing your notes…' : getSummaryStatusMessage(summaryStatus) || 'Reading the transcript…'}</span>
+        </div>
+        {streamText ? (
+          <div className="stream-md">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamText}</ReactMarkdown>
+            <span className="inline-block w-1.5 h-4 bg-gray-400 animate-pulse align-middle ml-0.5" />
+          </div>
+        ) : (
+          <div className="space-y-2.5 pt-2" aria-hidden="true">
+            {[92, 78, 85, 60].map((w) => (
+              <div key={w} className="h-3 rounded bg-gray-100 animate-pulse" style={{ width: `${w}%` }} />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  } else if (!aiSummary) {
+    body = (
+      <div className="mt-16 text-center">
+        <Sparkles size={22} className="mx-auto mb-3 text-gray-300" />
+        <h3 className="text-[15px] font-semibold text-gray-900">No notes written yet</h3>
+        <p className="mx-auto mt-1 max-w-sm text-[13px] text-gray-500">
+          {!canGenerate
+            ? 'This meeting has no transcript or notes to work from.'
+            : hasNotes
+              ? 'Notesify will keep your notes and add what you missed from the transcript.'
+              : 'Notesify will write decisions, action items and key points from the transcript.'}
+        </p>
+      </div>
+    );
+  } else {
+    body = (
+      <>
+        <div className="mt-4 -mx-3">
+          <BlockNoteSummaryView
+            ref={summaryRef}
+            summaryData={aiSummary}
+            onSave={onSaveSummary}
+            onSummaryChange={onSummaryChange}
+            onDirtyChange={onDirtyChange}
+            status={summaryStatus}
+            error={summaryError}
+            onRegenerateSummary={() => {
+              Analytics.trackButtonClick('regenerate_summary', 'meeting_details');
+              onRegenerateSummary();
+            }}
+            meeting={{
+              id: meeting.id,
+              title: meetingTitle,
+              created_at: meeting.created_at
+            }}
+          />
+        </div>
+        {summaryStatus === 'error' && summaryError && (
+          <div className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-red-700">
+            <p className="text-sm font-medium">{summaryError}</p>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  // Dark capsule docked at the bottom, matching the recorder: optional
+  // instructions for the AI plus the Enhance / Stop action.
+  const dock = activeTab !== 'ask' && canGenerate && (
+    <div className="pointer-events-none absolute inset-x-0 bottom-6 z-10 flex justify-center px-6">
+      <div className="pointer-events-auto flex w-full max-w-[560px] items-center gap-2 rounded-full bg-[var(--sc-dock)] py-1.5 pl-5 pr-1.5 text-[var(--sc-dock-ink)] shadow-[var(--sc-shadow-md)] ring-1 ring-black/5">
+        <input
+          value={customPrompt}
+          onChange={(e) => onPromptChange(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !isSummaryLoading) generate(); }}
+          disabled={isSummaryLoading}
+          placeholder={aiSummary ? 'What should change? e.g. shorter, focus on decisions' : 'Add context: who was there, what mattered'}
+          aria-label="Instructions for the AI"
+          className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-[var(--sc-dock-ink)]/45 disabled:opacity-60"
+        />
+        {isSummaryLoading ? (
+          <button
+            type="button"
+            onClick={() => {
+              Analytics.trackButtonClick('stop_summary_generation', 'meeting_details');
+              onStopGeneration();
+            }}
+            className="flex h-9 shrink-0 items-center gap-2 rounded-full bg-white/10 pl-3.5 pr-4 text-[13px] font-medium hover:bg-white/15 transition-colors"
+          >
+            <Square size={11} fill="currentColor" />
+            Stop
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={generate}
+            disabled={isModelConfigLoading}
+            title={hasNotes ? 'Rewrite your notes into a complete document using the transcript' : 'Write notes from the transcript'}
+            className="flex h-9 shrink-0 items-center gap-2 rounded-full bg-[var(--sc-dock-ink)] pl-3.5 pr-4 text-[13px] font-semibold text-[var(--sc-dock)] hover:opacity-90 transition-opacity disabled:opacity-50"
+          >
+            <Sparkles size={14} />
+            {mainLabel}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="relative flex-1 min-w-0 min-h-0 flex flex-col bg-white">
+      {activeTab === 'ask' ? (
+        <div className="flex-1 min-h-0 flex flex-col">
+          <div className="mx-auto w-full max-w-[720px] px-6 sm:px-10 pt-14">{header}</div>
+          <div className="mx-auto w-full max-w-[720px] flex-1 min-h-0 sm:px-4">
+            <AskPanelLazy meetingId={meeting.id} />
+          </div>
+        </div>
+      ) : (
+        <div ref={docScrollRef} className="flex-1 min-h-0 overflow-y-auto">
+          <div className="meeting-doc mx-auto w-full max-w-[720px] px-6 sm:px-10 pt-14 pb-40">
+            {header}
+            {body}
+          </div>
         </div>
       )}
+      {dock}
     </div>
   );
 }

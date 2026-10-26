@@ -17,11 +17,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Sparkles, Settings, Loader2, FileText, Check, Square, SlidersHorizontal } from 'lucide-react';
+import { Sparkles, Settings, Loader2, FileText, Check, Square, SlidersHorizontal, Cpu, LayoutTemplate, ChevronDown } from 'lucide-react';
 import Analytics from '@/lib/analytics';
 import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
-import { useState, useEffect, ReactNode } from 'react';
+import { useState, useEffect, ReactNode, MutableRefObject } from 'react';
+
+/** Quiet outlined chip, shared by the meeting header's fact row */
+export const metaChip = 'inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-gray-200 bg-transparent text-[12px] text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-colors';
 import { isOllamaNotInstalledError } from '@/lib/utils';
 import { BuiltInModelInfo } from '@/lib/builtin-ai';
 import { TemplateManagerDialog } from '@/components/Templates/TemplateManagerDialog';
@@ -45,6 +48,14 @@ interface SummaryGeneratorButtonGroupProps {
   hasNotes?: boolean;
   isModelConfigLoading?: boolean;
   onOpenModelSettings?: (openFn: () => void) => void;
+  /**
+   * "toolbar": one outlined button group with the Enhance action.
+   * "chips": template, language and model as header chips, no Enhance button;
+   * the caller triggers generation through generateRef instead.
+   */
+  layout?: 'toolbar' | 'chips';
+  /** Receives the checked generate action (model readiness checks included) */
+  generateRef?: MutableRefObject<(() => void) | null>;
 }
 
 export function SummaryGeneratorButtonGroup({
@@ -64,7 +75,9 @@ export function SummaryGeneratorButtonGroup({
   hasNotes = false,
   isModelConfigLoading = false,
   onOpenModelSettings,
-  languageSlot
+  languageSlot,
+  layout = 'toolbar',
+  generateRef,
 }: SummaryGeneratorButtonGroupProps) {
   const [isCheckingModels, setIsCheckingModels] = useState(false);
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
@@ -229,6 +242,113 @@ export function SummaryGeneratorButtonGroup({
   const isGenerating = summaryStatus === 'processing' || summaryStatus === 'summarizing' || summaryStatus === 'regenerating';
   const selectedTemplateName = availableTemplates.find(t => t.id === selectedTemplate)?.name ?? 'Auto';
   const mainLabel = hasSummary ? 'Re-enhance' : hasNotes ? 'Enhance notes' : 'Generate notes';
+  if (generateRef) generateRef.current = checkOllamaModelsAndGenerate;
+
+  const chips = layout === 'chips';
+
+  const settingsDialog = (
+    <Dialog open={settingsDialogOpen} onOpenChange={setSettingsDialogOpen}>
+      <DialogTrigger asChild>
+        {chips ? (
+          <button type="button" className={metaChip} title="AI model used for notes and chat">
+            <Cpu size={13} className="text-gray-400" />
+            <span className="max-w-[160px] truncate">{modelConfig.model || 'AI model'}</span>
+            <ChevronDown size={12} className="text-gray-400" />
+          </button>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            title="AI model used for notes and chat"
+          >
+            <Settings />
+            <span className="hidden lg:inline">AI Model</span>
+          </Button>
+        )}
+      </DialogTrigger>
+      <DialogContent
+        aria-describedby={undefined}
+      >
+        <VisuallyHidden>
+          <DialogTitle>Model Settings</DialogTitle>
+        </VisuallyHidden>
+        <ModelSettingsModal
+          onSave={async (config) => {
+            await onSaveModelConfig(config);
+            setSettingsDialogOpen(false);
+          }}
+          modelConfig={modelConfig}
+          setModelConfig={setModelConfig}
+          skipInitialFetch={true}
+          layout="dialog"
+        />
+      </DialogContent>
+    </Dialog>
+  );
+
+  const templateMenu = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        {chips ? (
+          <button type="button" className={metaChip} title="How Notesify writes this meeting's notes">
+            <LayoutTemplate size={13} className="text-gray-400" />
+            <span className="max-w-[140px] truncate">{selectedTemplateName}</span>
+            <ChevronDown size={12} className="text-gray-400" />
+          </button>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            title={`Template: ${selectedTemplateName}`}
+          >
+            <FileText />
+            <span className="hidden lg:inline max-w-[140px] truncate">{selectedTemplateName}</span>
+          </Button>
+        )}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align={chips ? 'start' : 'end'} className="max-h-[70vh] overflow-y-auto">
+        {availableTemplates.map((template) => (
+          <DropdownMenuItem
+            key={template.id}
+            onClick={() => onTemplateSelect(template.id, template.name)}
+            title={template.description}
+            className="flex items-center justify-between gap-2"
+          >
+            <span>{template.name}</span>
+            {selectedTemplate === template.id && (
+              <Check className="h-4 w-4 text-green-600" />
+            )}
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => setTemplateManagerOpen(true)} className="flex items-center gap-2">
+          <SlidersHorizontal className="h-4 w-4" />
+          <span>Manage templates…</span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
+  const templateManager = (
+    <TemplateManagerDialog
+      open={templateManagerOpen}
+      onOpenChange={setTemplateManagerOpen}
+      selectedTemplateId={selectedTemplate}
+      onChanged={onRefreshTemplates}
+      onUseTemplate={onTemplateSelect}
+    />
+  );
+
+  if (chips) {
+    return (
+      <>
+        {templateMenu}
+        {languageSlot}
+        {settingsDialog}
+        {templateManager}
+      </>
+    );
+  }
 
   return (
     <ButtonGroup>
@@ -282,78 +402,11 @@ export function SummaryGeneratorButtonGroup({
 
       {languageSlot}
 
-      {/* Settings button */}
-      <Dialog open={settingsDialogOpen} onOpenChange={setSettingsDialogOpen}>
-        <DialogTrigger asChild>
-          <Button
-            variant="outline"
-            size="sm"
-            title="AI model used for notes and chat"
-          >
-            <Settings />
-            <span className="hidden lg:inline">AI Model</span>
-          </Button>
-        </DialogTrigger>
-        <DialogContent
-          aria-describedby={undefined}
-        >
-          <VisuallyHidden>
-            <DialogTitle>Model Settings</DialogTitle>
-          </VisuallyHidden>
-          <ModelSettingsModal
-            onSave={async (config) => {
-              await onSaveModelConfig(config);
-              setSettingsDialogOpen(false);
-            }}
-            modelConfig={modelConfig}
-            setModelConfig={setModelConfig}
-            skipInitialFetch={true}
-            layout="dialog"
-          />
-        </DialogContent>
-      </Dialog>
+      {settingsDialog}
 
-      {/* Template selector dropdown */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="outline"
-            size="sm"
-            title={`Template: ${selectedTemplateName}`}
-          >
-            <FileText />
-            <span className="hidden lg:inline max-w-[140px] truncate">{selectedTemplateName}</span>
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="max-h-[70vh] overflow-y-auto">
-          {availableTemplates.map((template) => (
-            <DropdownMenuItem
-              key={template.id}
-              onClick={() => onTemplateSelect(template.id, template.name)}
-              title={template.description}
-              className="flex items-center justify-between gap-2"
-            >
-              <span>{template.name}</span>
-              {selectedTemplate === template.id && (
-                <Check className="h-4 w-4 text-green-600" />
-              )}
-            </DropdownMenuItem>
-          ))}
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => setTemplateManagerOpen(true)} className="flex items-center gap-2">
-            <SlidersHorizontal className="h-4 w-4" />
-            <span>Manage templates…</span>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {templateMenu}
 
-      <TemplateManagerDialog
-        open={templateManagerOpen}
-        onOpenChange={setTemplateManagerOpen}
-        selectedTemplateId={selectedTemplate}
-        onChanged={onRefreshTemplates}
-        onUseTemplate={onTemplateSelect}
-      />
+      {templateManager}
     </ButtonGroup>
   );
 }

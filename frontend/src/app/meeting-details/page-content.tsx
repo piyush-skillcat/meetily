@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
+import { PanelRight } from 'lucide-react';
 import { Summary, SummaryResponse } from '@/types';
 import Analytics from '@/lib/analytics';
 import { invoke } from '@tauri-apps/api/core';
@@ -19,6 +20,8 @@ import { useMeetingOperations } from '@/hooks/meeting-details/useMeetingOperatio
 import { useEnhanceNotes } from '@/hooks/meeting-details/useEnhanceNotes';
 import { useMeetingNotes } from '@/hooks/useMeetingNotes';
 import { useConfig } from '@/contexts/ConfigContext';
+
+const TRANSCRIPT_OPEN_KEY = 'notesify.meetingTranscriptOpen';
 
 export default function PageContent({
   meeting,
@@ -54,6 +57,19 @@ export default function PageContent({
   const [isRecording] = useState(false);
   const [summaryResponse] = useState<SummaryResponse | null>(null);
   const [activeTab, setActiveTab] = useState<SummaryTab>('enhanced');
+  // The transcript drawer stays the way the user last left it
+  const [showTranscript, setShowTranscript] = useState(false);
+  useEffect(() => {
+    try {
+      setShowTranscript(localStorage.getItem(TRANSCRIPT_OPEN_KEY) === '1');
+    } catch { }
+  }, []);
+  const toggleTranscript = (open: boolean) => {
+    setShowTranscript(open);
+    try {
+      localStorage.setItem(TRANSCRIPT_OPEN_KEY, open ? '1' : '0');
+    } catch { }
+  };
 
   // Ref to store the modal open function from SummaryGeneratorButtonGroup
   const openModelSettingsRef = useRef<(() => void) | null>(null);
@@ -198,72 +214,91 @@ export default function PageContent({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, ease: 'easeOut' }}
-      className="flex flex-col h-screen bg-gray-50"
+      className="flex flex-col h-screen bg-white"
     >
       <div className="flex flex-1 overflow-hidden">
-        <TranscriptPanel
-          transcripts={meetingData.transcripts}
-          customPrompt={customPrompt}
-          onPromptChange={setCustomPrompt}
-          onCopyTranscript={copyOperations.handleCopyTranscript}
-          onOpenMeetingFolder={meetingOperations.handleOpenMeetingFolder}
-          isRecording={isRecording}
-          disableAutoScroll={true}
-          usePagination={true}
-          segments={segments}
-          hasMore={hasMore}
-          isLoadingMore={isLoadingMore}
-          totalCount={totalCount}
-          loadedCount={loadedCount}
-          onLoadMore={onLoadMore}
-          meetingId={meeting.id}
-          meetingFolderPath={meeting.folder_path}
-          onRefetchTranscripts={onRefetchTranscripts}
-        />
-        <SummaryPanel
-          meeting={meeting}
-          meetingTitle={meetingData.meetingTitle}
-          onTitleChange={meetingData.handleTitleChange}
-          isEditingTitle={meetingData.isEditingTitle}
-          onStartEditTitle={() => meetingData.setIsEditingTitle(true)}
-          onFinishEditTitle={() => meetingData.setIsEditingTitle(false)}
-          isTitleDirty={meetingData.isTitleDirty}
-          summaryRef={meetingData.blockNoteSummaryRef}
-          isSaving={meetingData.isSaving}
-          onSaveAll={meetingData.saveAllChanges}
-          onCopySummary={copyOperations.handleCopySummary}
-          onOpenFolder={meetingOperations.handleOpenMeetingFolder}
-          aiSummary={meetingData.aiSummary}
-          summaryStatus={summaryStatus}
-          transcripts={meetingData.transcripts}
-          totalTranscriptCount={totalCount}
-          modelConfig={modelConfig}
-          setModelConfig={setModelConfig}
-          onSaveModelConfig={handleSaveModelConfig}
-          onGenerateSummary={handleEnhance}
-          onStopGeneration={handleStop}
-          customPrompt={customPrompt}
-          summaryResponse={summaryResponse}
-          onSaveSummary={meetingData.handleSaveSummary}
-          onSummaryChange={meetingData.handleSummaryChange}
-          onDirtyChange={meetingData.setIsSummaryDirty}
-          summaryError={summaryError}
-          onRegenerateSummary={() => handleEnhance(customPrompt)}
-          getSummaryStatusMessage={summaryGeneration.getSummaryStatusMessage}
-          availableTemplates={templates.availableTemplates}
-          selectedTemplate={templates.selectedTemplate}
-          onTemplateSelect={templates.handleTemplateSelection}
-          onRefreshTemplates={templates.refreshTemplates}
-          isModelConfigLoading={false}
-          onOpenModelSettings={handleRegisterModalOpen}
-          streamText={enhance.streamText}
-          notesMarkdown={notes.notesMarkdown}
-          notesJson={notes.notesJson}
-          notesLoading={notes.isLoading}
-          onNotesChange={(md, json) => { void notes.save(md, json); }}
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-        />
+        {/* The meeting as a document; the transcript is a drawer on the right */}
+        <div className="relative flex-1 min-w-0 flex flex-col">
+          {!showTranscript && (
+            <button
+              onClick={() => toggleTranscript(true)}
+              className="absolute top-3 right-4 z-20 h-8 px-2.5 flex items-center gap-1.5 rounded-md text-[13px] text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+              title="Show transcript"
+            >
+              <PanelRight className="w-4 h-4" />
+              Transcript
+            </button>
+          )}
+          <SummaryPanel
+            meeting={meeting}
+            meetingTitle={meetingData.meetingTitle}
+            onTitleChange={meetingData.handleTitleChange}
+            isEditingTitle={meetingData.isEditingTitle}
+            onStartEditTitle={() => meetingData.setIsEditingTitle(true)}
+            onFinishEditTitle={() => meetingData.setIsEditingTitle(false)}
+            isTitleDirty={meetingData.isTitleDirty}
+            summaryRef={meetingData.blockNoteSummaryRef}
+            isSaving={meetingData.isSaving}
+            onSaveAll={meetingData.saveAllChanges}
+            onCopySummary={copyOperations.handleCopySummary}
+            onOpenFolder={meetingOperations.handleOpenMeetingFolder}
+            aiSummary={meetingData.aiSummary}
+            summaryStatus={summaryStatus}
+            transcripts={meetingData.transcripts}
+            totalTranscriptCount={totalCount}
+            modelConfig={modelConfig}
+            setModelConfig={setModelConfig}
+            onSaveModelConfig={handleSaveModelConfig}
+            onGenerateSummary={handleEnhance}
+            onStopGeneration={handleStop}
+            customPrompt={customPrompt}
+            summaryResponse={summaryResponse}
+            onSaveSummary={meetingData.handleSaveSummary}
+            onSummaryChange={meetingData.handleSummaryChange}
+            onDirtyChange={meetingData.setIsSummaryDirty}
+            summaryError={summaryError}
+            onRegenerateSummary={() => handleEnhance(customPrompt)}
+            getSummaryStatusMessage={summaryGeneration.getSummaryStatusMessage}
+            availableTemplates={templates.availableTemplates}
+            selectedTemplate={templates.selectedTemplate}
+            onTemplateSelect={templates.handleTemplateSelection}
+            onRefreshTemplates={templates.refreshTemplates}
+            isModelConfigLoading={false}
+            onOpenModelSettings={handleRegisterModalOpen}
+            streamText={enhance.streamText}
+            notesMarkdown={notes.notesMarkdown}
+            notesJson={notes.notesJson}
+            notesLoading={notes.isLoading}
+            onNotesChange={(md, json) => { void notes.save(md, json); }}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            onPromptChange={setCustomPrompt}
+            onSaveTitle={meetingData.handleSaveMeetingTitle}
+          />
+        </div>
+
+        {showTranscript && (
+          <aside className="w-[380px] min-w-[320px] flex flex-col border-l border-gray-200 bg-white overflow-hidden">
+            <TranscriptPanel
+              transcripts={meetingData.transcripts}
+              onCopyTranscript={copyOperations.handleCopyTranscript}
+              onOpenMeetingFolder={meetingOperations.handleOpenMeetingFolder}
+              isRecording={isRecording}
+              disableAutoScroll={true}
+              usePagination={true}
+              segments={segments}
+              hasMore={hasMore}
+              isLoadingMore={isLoadingMore}
+              totalCount={totalCount}
+              loadedCount={loadedCount}
+              onLoadMore={onLoadMore}
+              meetingId={meeting.id}
+              meetingFolderPath={meeting.folder_path}
+              onRefetchTranscripts={onRefetchTranscripts}
+              onClose={() => toggleTranscript(false)}
+            />
+          </aside>
+        )}
       </div>
     </motion.div>
   );
