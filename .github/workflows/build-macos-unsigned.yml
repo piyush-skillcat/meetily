@@ -1,0 +1,70 @@
+name: "Build macOS (unsigned)"
+
+# Ad-hoc signed Apple Silicon build that needs no repository secrets.
+# Runs on pushes to build/macos, or by hand from the Actions tab.
+on:
+  push:
+    branches: [build/macos]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUST_BACKTRACE: 1
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build macOS (Apple Silicon)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+          key: macos-unsigned-aarch64
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Build llama-helper sidecar (Metal)
+        run: |
+          cargo build --release -p llama-helper --features metal
+          mkdir -p frontend/src-tauri/binaries
+          cp target/release/llama-helper frontend/src-tauri/binaries/llama-helper-aarch64-apple-darwin
+
+      - name: Build app and DMG
+        working-directory: frontend
+        # No updater key here, so skip the signed updater archive.
+        # signingIdentity "-" in tauri.conf.json ad-hoc signs the bundle.
+        run: >
+          pnpm tauri build --target aarch64-apple-darwin --bundles app,dmg
+          --config '{"bundle":{"createUpdaterArtifacts":false}}'
+
+      - name: List bundle
+        run: find target/aarch64-apple-darwin/release/bundle -maxdepth 2
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: notesify-macos-aarch64-${{ github.sha }}
+          path: target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+          retention-days: 14
