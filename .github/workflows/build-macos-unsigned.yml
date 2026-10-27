@@ -44,7 +44,8 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: pnpm install --frozen-lockfile
+        # The lockfile lags package.json "overrides", so it cannot be frozen
+        run: pnpm install --no-frozen-lockfile
 
       - name: Build llama-helper sidecar (Metal)
         run: |
