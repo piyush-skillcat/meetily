@@ -31,7 +31,6 @@ export interface ParakeetEngineState {
 // User-friendly model display configuration
 export interface ModelDisplayInfo {
   friendlyName: string;
-  icon: string;
   tagline: string;
   recommended?: boolean;
   tier: 'fastest' | 'balanced' | 'precise';
@@ -39,22 +38,19 @@ export interface ModelDisplayInfo {
 
 export const MODEL_DISPLAY_CONFIG: Record<string, ModelDisplayInfo> = {
   'parakeet-tdt-0.6b-v3-int8': {
-    friendlyName: 'Lightning',
-    icon: '⚡',
-    tagline: 'Real time • Best for speed, great accuracy',
+    friendlyName: 'Parakeet v3',
+    tagline: 'Fast and accurate, 25 European languages',
     recommended: true,
     tier: 'fastest'
   },
   'parakeet-tdt-0.6b-v2-int8': {
-    friendlyName: 'Compact',
-    icon: '📦',
-    tagline: 'Real time • Smaller size',
+    friendlyName: 'Parakeet v2',
+    tagline: 'Fast, English only',
     tier: 'balanced'
   },
   'parakeet-tdt-0.6b-v3-fp32': {
-    friendlyName: 'Precise',
-    icon: '🎯',
-    tagline: '20x real-time • Higher accuracy',
+    friendlyName: 'Parakeet v3 full precision',
+    tagline: 'Slightly more accurate, about 4x the download',
     tier: 'precise'
   }
 };
@@ -87,15 +83,6 @@ export const PARAKEET_MODEL_CONFIGS: Record<string, Partial<ParakeetModelInfo>> 
 };
 
 // Helper functions
-export function getModelIcon(accuracy: ModelAccuracy): string {
-  switch (accuracy) {
-    case 'High': return '🔥';
-    case 'Good': return '⚡';
-    case 'Decent': return '🚀';
-    default: return '📊';
-  }
-}
-
 // Get user-friendly display name for a model
 export function getModelDisplayName(modelName: string): string {
   const displayInfo = MODEL_DISPLAY_CONFIG[modelName];

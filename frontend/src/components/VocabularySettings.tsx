@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 
 /**
@@ -36,10 +35,7 @@ export function VocabularySettings() {
     };
 
     return (
-        <div className="mx-1">
-            <Label className="block text-sm font-medium text-gray-700 mb-1">
-                Vocabulary
-            </Label>
+        <div>
             <Textarea
                 value={glossary}
                 onChange={(e) => {
@@ -48,17 +44,21 @@ export function VocabularySettings() {
                 }}
                 onBlur={save}
                 rows={4}
+                aria-label="Vocabulary"
                 placeholder={'SkillCat, Notesify\nyour teammates\' names\nproduct and customer names'}
-                className="focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
             />
-            <p className="text-xs text-gray-500 mt-1">
-                Names, companies and jargon to listen for, separated by commas or new lines (up to 100 terms in total).
-                People you list on the recording screen and names you type in your notes are added automatically.
-                Used when the language is set to a specific language, not Auto.
-                {status === 'saving' && ' Saving…'}
-                {status === 'saved' && ' Saved.'}
-                {status === 'error' && ' Could not save.'}
-            </p>
+            <div className="mt-1.5 flex items-start justify-between gap-4 text-[12px] leading-relaxed text-gray-500">
+                <p>
+                    Separate terms with commas or new lines, up to 100 in total. People you list on the recording
+                    screen and names in your notes are added automatically. Applies when the language is set to a
+                    specific language, not Auto.
+                </p>
+                <span className={`shrink-0 ${status === 'error' ? 'text-[var(--sc-danger)]' : ''}`} aria-live="polite">
+                    {status === 'saving' && 'Saving'}
+                    {status === 'saved' && 'Saved'}
+                    {status === 'error' && 'Could not save'}
+                </span>
+            </div>
         </div>
     );
 }

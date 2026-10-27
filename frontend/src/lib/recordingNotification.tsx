@@ -19,7 +19,7 @@ export async function showRecordingNotification(): Promise<void> {
     if (showNotification) {
       let dontShowAgain = false;
 
-      const toastId = toast.info('🔴 Recording Started', {
+      const toastId = toast.info('Recording started', {
         description: (
           <div className="space-y-3 min-w-[280px]">
             <p className="text-sm font-medium text-gray-900">

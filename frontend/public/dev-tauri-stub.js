@@ -44,12 +44,23 @@
   var tick = 0;
   var nextId = 1;
 
+  var transcript = { provider: 'localWhisper', model: 'medium-q5_0', keys: {} };
+  var whisperModels = [
+    { name: 'small', path: '', size_mb: 466, accuracy: 'Good', speed: 'Medium', status: 'Missing', description: '' },
+    { name: 'medium-q5_0', path: '', size_mb: 514, accuracy: 'High', speed: 'Medium', status: 'Available', description: '' },
+    { name: 'large-v3-q5_0', path: '', size_mb: 1031, accuracy: 'High', speed: 'Slow', status: { Downloading: 42 }, description: '' },
+    { name: 'large-v3-turbo', path: '', size_mb: 1550, accuracy: 'High', speed: 'Medium', status: 'Missing', description: '' },
+  ];
+  var parakeetModels = [
+    { name: 'parakeet-tdt-0.6b-v3-int8', path: '', size_mb: 670, accuracy: 'High', speed: 'Ultra Fast', status: 'Available', description: '', quantization: 'Int8' },
+    { name: 'parakeet-tdt-0.6b-v2-int8', path: '', size_mb: 661, accuracy: 'High', speed: 'Very Fast', status: 'Missing', description: '', quantization: 'Int8' },
+  ];
+
   var responses = {
     get_onboarding_status: {
       version: '1', completed: true, current_step: 4,
       model_status: { parakeet: 'downloaded', summary: 'downloaded' }, last_updated: '',
     },
-    api_get_transcript_config: { provider: 'deepgram', model: 'nova-3', apiKey: null },
     api_get_model_config: { provider: 'claude', model: 'claude-sonnet', whisperModel: '', apiKey: null },
     get_recording_preferences: { save_folder: '/tmp', auto_save: true, file_format: 'mp4' },
     is_recording: recording,
@@ -69,6 +80,14 @@
       { id: 'customer_call', name: 'Customer call', description: 'Needs, objections, follow-ups' },
     ],
     api_get_default_template: 'auto',
+    get_audio_backend_info: [{ id: 'screencapturekit', name: 'Default', description: '' }],
+    get_current_audio_backend: 'screencapturekit',
+    get_notification_settings: {
+      notification_preferences: { show_recording_started: true, show_recording_stopped: true },
+    },
+    get_database_directory: '/home/you/.local/share/com.meetily.ai',
+    whisper_get_models_directory: '/home/you/.local/share/com.meetily.ai/models',
+    get_default_recordings_folder_path: '/home/you/Music/meetily-recordings',
     api_get_meeting_metadata: {
       id: 'demo-1', title: 'Content Portal Integration & Strategy',
       created_at: meetingStart, updated_at: meetingStart, folder_path: '/tmp/demo-1',
@@ -93,7 +112,20 @@
     transformCallback: function (cb) { var id = nextId++; window['_' + id] = cb; return id; },
     unregisterCallback: function () {},
     convertFileSrc: function (p) { return p; },
-    invoke: function (cmd) {
+    invoke: function (cmd, args) {
+      // Transcription settings round-trip: save, then read back
+      if (cmd === 'api_get_transcript_config') {
+        return Promise.resolve({ provider: transcript.provider, model: transcript.model, apiKey: transcript.keys[transcript.provider] || null });
+      }
+      if (cmd === 'api_get_transcript_api_key') return Promise.resolve(transcript.keys[args.provider] || '');
+      if (cmd === 'api_save_transcript_config') {
+        transcript.provider = args.provider;
+        transcript.model = args.model;
+        if (args.apiKey) transcript.keys[args.provider] = args.apiKey;
+        return Promise.resolve({ status: 'success' });
+      }
+      if (cmd === 'whisper_get_available_models') return Promise.resolve(whisperModels);
+      if (cmd === 'parakeet_get_available_models') return Promise.resolve(parakeetModels);
       if (cmd === 'get_live_audio_levels') {
         tick++;
         return Promise.resolve({

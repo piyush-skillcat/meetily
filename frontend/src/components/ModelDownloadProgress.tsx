@@ -44,7 +44,7 @@ export function ModelDownloadProgress({ status, modelName, onCancel }: ModelDown
       
       {isCompleted && (
         <div className="mt-2 text-xs text-green-700">
-          ✓ Download completed, loading model...
+          Downloaded. Loading the model…
         </div>
       )}
     </div>
@@ -114,15 +114,15 @@ export function DownloadSummary({ totalModels, downloadedModels, totalSizeMb }: 
     <div className="bg-gray-50 rounded-lg p-3 text-sm">
       <div className="flex items-center justify-between">
         <span className="text-gray-700">
-          📦 {downloadedModels} of {totalModels} models available
+          {downloadedModels} of {totalModels} models downloaded
         </span>
         <span className="text-gray-600">
-          💾 {formatSize(totalSizeMb)} total
+          {formatSize(totalSizeMb)} total
         </span>
       </div>
       {downloadedModels > 0 && (
-        <div className="mt-1 text-xs text-green-600">
-          ✓ Models run locally - no internet required for transcription
+        <div className="mt-1 text-xs text-gray-500">
+          Downloaded models run on this computer, without internet
         </div>
       )}
     </div>

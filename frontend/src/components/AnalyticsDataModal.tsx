@@ -104,16 +104,16 @@ export default function AnalyticsDataModal({ isOpen, onClose, onConfirmDisable }
           </div>
 
           {/* What We DON'T Collect */}
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <h4 className="font-semibold text-red-900 mb-2">What We DON'T Collect:</h4>
-            <ul className="text-sm text-red-800 space-y-1 ml-4">
-              <li>• ❌ Meeting names or titles</li>
-              <li>• ❌ File names, file paths, or meeting folders</li>
-              <li>• ❌ Meeting transcripts or content</li>
-              <li>• ❌ Audio recordings</li>
-              <li>• ❌ Device names (only types: Bluetooth/Wired)</li>
-              <li>• ❌ Personal information</li>
-              <li>• ❌ Any identifiable data</li>
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+            <h4 className="font-semibold text-gray-900 mb-2">Never collected</h4>
+            <ul className="text-sm text-gray-700 space-y-1 ml-4">
+              <li>• Meeting names or titles</li>
+              <li>• File names, file paths, or meeting folders</li>
+              <li>• Meeting transcripts or content</li>
+              <li>• Audio recordings</li>
+              <li>• Device names (only types: Bluetooth/Wired)</li>
+              <li>• Personal information</li>
+              <li>• Any identifiable data</li>
             </ul>
           </div>
 

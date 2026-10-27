@@ -8,6 +8,9 @@ import { invoke } from "@tauri-apps/api/core"
 import Analytics from "@/lib/analytics"
 import AnalyticsConsentSwitch from "./AnalyticsConsentSwitch"
 import { useConfig, NotificationSettings } from "@/contexts/ConfigContext"
+import { Button } from "./ui/button"
+import { SettingsSection, SettingRow } from "./settings/SettingsSection"
+
 
 export function PreferenceSettings() {
   const {
@@ -136,101 +139,59 @@ export function PreferenceSettings() {
 
   // Show loading only if we're actually loading and don't have cached data
   if (isLoadingPreferences && !notificationSettings && !storageLocations) {
-    return <div className="max-w-2xl mx-auto p-6">Loading Preferences...</div>
+    return <div className="text-[13px] text-gray-500">Loading…</div>
   }
 
   // Show loading if notificationsEnabled hasn't been determined yet
   if (notificationsEnabled === null && !isLoadingPreferences) {
-    return <div className="max-w-2xl mx-auto p-6">Loading Preferences...</div>
+    return <div className="text-[13px] text-gray-500">Loading…</div>
   }
 
   // Ensure we have a boolean value for the Switch component
   const notificationsEnabledValue = notificationsEnabled ?? false;
 
   return (
-    <div className="space-y-6">
-      {/* Notifications Section */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
-        <div className="mb-8">
-          <h3 className="text-lg font-semibold text-gray-900 mb-1">Appearance</h3>
-          <p className="text-sm text-gray-500 mb-3">Follow your system theme, or pick one.</p>
-          <ThemeSelector />
-        </div>
+    <div className="space-y-5">
+      <SettingsSection title="App">
+        <SettingRow
+          label="Appearance"
+          description="Follow your system theme, or pick one."
+          control={<ThemeSelector />}
+        />
+        <SettingRow
+          label="Notifications"
+          description="Show a notification when a recording starts and stops."
+          control={<Switch checked={notificationsEnabledValue} onCheckedChange={setNotificationsEnabled} />}
+        />
+      </SettingsSection>
 
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Notifications</h3>
-            <p className="text-sm text-gray-600">Enable or disable notifications of start and end of meeting</p>
-          </div>
-          <Switch checked={notificationsEnabledValue} onCheckedChange={setNotificationsEnabled} />
-        </div>
-      </div>
+      <SettingsSection
+        title="Storage"
+        description="Your meetings, transcripts and recordings stay on this computer."
+      >
+        <SettingRow
+          label="Recordings folder"
+          description={<span className="font-mono text-[12px] break-all">{storageLocations?.recordings || 'Loading…'}</span>}
+          control={
+            <Button variant="outline" size="sm" onClick={() => handleOpenFolder('recordings')}>
+              <FolderOpen />
+              Open
+            </Button>
+          }
+        />
+        <SettingRow
+          label="App data"
+          description="The database and downloaded models live together in the app's data folder."
+          control={
+            <Button variant="outline" size="sm" onClick={() => handleOpenFolder('database')}>
+              <FolderOpen />
+              Open
+            </Button>
+          }
+        />
+      </SettingsSection>
 
-      {/* Data Storage Locations Section */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Data Storage Locations</h3>
-        <p className="text-sm text-gray-600 mb-6">
-          View and access where Notesify stores your data
-        </p>
-
-        <div className="space-y-4">
-          {/* Database Location */}
-          {/* <div className="p-4 border rounded-lg bg-gray-50">
-            <div className="font-medium mb-2">Database</div>
-            <div className="text-sm text-gray-600 mb-3 break-all font-mono text-xs">
-              {storageLocations?.database || 'Loading...'}
-            </div>
-            <button
-              onClick={() => handleOpenFolder('database')}
-              className="flex items-center gap-2 px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-100 transition-colors"
-            >
-              <FolderOpen className="w-4 h-4" />
-              Open Folder
-            </button>
-          </div> */}
-
-          {/* Models Location */}
-          {/* <div className="p-4 border rounded-lg bg-gray-50">
-            <div className="font-medium mb-2">Whisper Models</div>
-            <div className="text-sm text-gray-600 mb-3 break-all font-mono text-xs">
-              {storageLocations?.models || 'Loading...'}
-            </div>
-            <button
-              onClick={() => handleOpenFolder('models')}
-              className="flex items-center gap-2 px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-100 transition-colors"
-            >
-              <FolderOpen className="w-4 h-4" />
-              Open Folder
-            </button>
-          </div> */}
-
-          {/* Recordings Location */}
-          <div className="p-4 border rounded-lg bg-gray-50">
-            <div className="font-medium mb-2">Meeting Recordings</div>
-            <div className="text-sm text-gray-600 mb-3 break-all font-mono text-xs">
-              {storageLocations?.recordings || 'Loading...'}
-            </div>
-            <button
-              onClick={() => handleOpenFolder('recordings')}
-              className="flex items-center gap-2 px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-100 transition-colors"
-            >
-              <FolderOpen className="w-4 h-4" />
-              Open Folder
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-4 p-3 bg-blue-50 rounded-md">
-          <p className="text-xs text-blue-800">
-            <strong>Note:</strong> Database and models are stored together in your application data directory for unified management.
-          </p>
-        </div>
-      </div>
-
-      {/* Analytics Section */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
-        <AnalyticsConsentSwitch />
-      </div>
+      <AnalyticsConsentSwitch />
     </div>
   )
 }

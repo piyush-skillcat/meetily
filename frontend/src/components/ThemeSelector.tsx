@@ -28,7 +28,7 @@ export function ThemeSelector({ compact = false }: { compact?: boolean }) {
             title={label}
             onClick={() => setPreference(value)}
             className={`flex items-center gap-1.5 rounded-md text-xs font-semibold transition-colors ${compact ? 'px-2 py-1' : 'px-3 py-1.5'} ${
-              active ? 'bg-brand text-white' : 'text-ink-muted hover:text-ink-body hover:bg-gray-100'
+              active ? 'sc-cta' : 'text-ink-muted hover:text-ink-body hover:bg-gray-100'
             }`}
           >
             <Icon size={14} />

@@ -226,7 +226,7 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h4 className="text-sm font-medium text-gray-900">Audio Devices</h4>
+        <p className="text-[12.5px] text-gray-500">Microphone records you; system audio records the other side of the call.</p>
         <div className="flex items-center space-x-2">
           {/* TODO: Monitoring */}
           {/* <button */}
@@ -244,6 +244,8 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
           <button
             onClick={handleRefresh}
             disabled={refreshing || disabled}
+            title="Refresh device list"
+            aria-label="Refresh device list"
             className="h-8 w-8 p-0 inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-gray-100 disabled:pointer-events-none disabled:opacity-50"
           >
             <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
@@ -369,17 +371,9 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
         </div>
       </div>
 
-      {/* Info text */}
-      <div className="text-xs text-gray-500 space-y-1">
-        <p>• <strong>Microphone:</strong> Records your voice and ambient sound</p>
-        <p>• <strong>System Audio:</strong> Records computer audio (music, calls, etc.)</p>
-        {isMonitoring && (
-          <p>• <strong>Mic Levels:</strong> Green = good, Yellow = loud, Red = too loud</p>
-        )}
-        {!isMonitoring && inputDevices.length > 0 && (
-          <p>• <strong>Tip:</strong> Click "Test Mic" to check if your microphone is working</p>
-        )}
-      </div>
+      {isMonitoring && (
+        <p className="text-xs text-gray-500">Mic level: green is good, yellow is loud, red is too loud.</p>
+      )}
     </div>
   );
 }

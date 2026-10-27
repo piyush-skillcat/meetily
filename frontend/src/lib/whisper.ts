@@ -130,15 +130,6 @@ export const MODEL_CONFIGS: Record<string, Partial<ModelInfo>> = {
 };
 
 // Helper functions
-export function getModelIcon(accuracy: ModelAccuracy): string {
-  switch (accuracy) {
-    case 'High': return '🔥';
-    case 'Good': return '⚡';
-    case 'Decent': return '🚀';
-    default: return '📊';
-  }
-}
-
 export function getStatusColor(status: ModelStatus): string {
   if (status === 'Available') return 'green';
   if (status === 'Missing') return 'gray';
@@ -189,55 +180,17 @@ export function getModelPerformanceBadge(modelName: string): { label: string; co
   }
 }
 
-// Helper function to get concise tagline for model (similar to Parakeet style)
-export function getModelTagline(modelName: string, speed: ProcessingSpeed, accuracy: ModelAccuracy): string {
-  const isQuantized = isQuantizedModel(modelName);
-  const baseName = getModelBaseName(modelName);
-
-  // Speed prefix
-  let speedText = '';
-  switch (speed) {
-    case 'Very Fast':
-      speedText = 'Real time';
-      break;
-    case 'Fast':
-      speedText = 'Fast processing';
-      break;
-    case 'Medium':
-      speedText = 'Moderate speed';
-      break;
-    case 'Slow':
-      speedText = 'Slower processing';
-      break;
+// One plain line describing what a model is good for (specs are shown separately)
+export function getModelTagline(modelName: string, _speed: ProcessingSpeed, _accuracy: ModelAccuracy): string {
+  switch (getModelBaseName(modelName)) {
+    case 'large-v3': return 'Most accurate, slowest';
+    case 'large-v3-turbo': return 'Close to Large V3, much faster';
+    case 'medium': return 'Good balance of accuracy and speed';
+    case 'small': return 'Lighter, for slower machines';
+    case 'base': return 'Light, lower accuracy';
+    case 'tiny': return 'Smallest, lowest accuracy';
+    default: return '';
   }
-
-  // Key feature based on model and accuracy
-  let featureText = '';
-  if (baseName === 'large-v3') {
-    featureText = 'Most accurate';
-  } else if (baseName === 'large-v3-turbo') {
-    featureText = 'Best accuracy with speed';
-  } else if (baseName === 'medium') {
-    featureText = accuracy === 'High' ? 'Professional quality' : 'Balanced quality';
-  } else if (baseName === 'small') {
-    featureText = 'Good accuracy';
-  } else if (baseName === 'base') {
-    featureText = 'Balanced quality';
-  } else if (baseName === 'tiny') {
-    featureText = 'Fastest option';
-  }
-
-  // Add quantization note if applicable
-  if (isQuantized) {
-    const quantType = getModelType(modelName);
-    if (quantType === 'q5_0') {
-      featureText += ', optimized';
-    } else if (quantType === 'q4_0') {
-      featureText += ', ultra fast';
-    }
-  }
-
-  return `${speedText} • ${featureText}`;
 }
 
 // Group models by their base name for better UI organization

@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { ModelConfig, ModelSettingsModal } from '@/components/ModelSettingsModal';
 import { SummaryLanguageSettings } from '@/components/SummaryLanguageSettings';
 import { Switch } from './ui/switch';
+import { SettingsSection, SettingRow, SettingBlock } from './settings/SettingsSection';
 import { useConfig } from '@/contexts/ConfigContext';
 
 interface SummaryModelSettingsProps {
@@ -115,7 +116,7 @@ export function SummaryModelSettings({ refetchTrigger }: SummaryModelSettingsPro
       const { emit } = await import('@tauri-apps/api/event');
       await emit('model-config-updated', config);
 
-      toast.success('Model settings saved successfully');
+      toast.success('AI model saved');
     } catch (error) {
       console.error('Error saving model config:', error);
       toast.error('Failed to save model settings');
@@ -123,32 +124,30 @@ export function SummaryModelSettings({ refetchTrigger }: SummaryModelSettingsPro
   };
 
   return (
-    <div className='flex flex-col gap-4'>
-      <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Auto Summary</h3>
-            <p className="text-sm text-gray-600">Auto Generating summary after meeting completion(Stopping)</p>
-          </div>
-          <Switch checked={isAutoSummary} onCheckedChange={toggleIsAutoSummary} />
-        </div>
-      </div>
+    <div className="space-y-5">
+      <SettingsSection title="After a meeting">
+        <SettingRow
+          label="Write notes automatically"
+          description="Enhance the notes as soon as a recording stops."
+          control={<Switch checked={isAutoSummary} onCheckedChange={toggleIsAutoSummary} />}
+        />
+      </SettingsSection>
 
       <SummaryLanguageSettings />
 
-      <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
-        <h3 className="text-lg font-semibold mb-4">Summary Model Configuration</h3>
-        <p className="text-sm text-gray-600 mb-6">
-          Configure the AI model used for generating meeting summaries.
-        </p>
-
-        <ModelSettingsModal
-          modelConfig={modelConfig}
-          setModelConfig={setModelConfig}
-          onSave={handleSaveModelConfig}
-          skipInitialFetch={true}
-        />
-      </div>
+      <SettingsSection
+        title="AI model"
+        description="Writes the meeting notes and answers questions in Ask."
+      >
+        <SettingBlock>
+          <ModelSettingsModal
+            modelConfig={modelConfig}
+            setModelConfig={setModelConfig}
+            onSave={handleSaveModelConfig}
+            skipInitialFetch={true}
+          />
+        </SettingBlock>
+      </SettingsSection>
     </div>
   );
 }

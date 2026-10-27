@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Check, Search } from "lucide-react";
 import { LANGUAGE_OPTIONS } from "@/lib/summary-languages";
 import { useRecentLanguages } from "@/hooks/useRecentLanguages";
 
@@ -86,7 +87,7 @@ export function LanguagePickerPopover({
       aria-label="Pick summary language"
     >
       <div className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100">
-        <span className="text-gray-400 text-sm">🔍</span>
+        <Search size={14} className="text-gray-400 shrink-0" aria-hidden="true" />
         <input
           ref={inputRef}
           type="text"
@@ -117,7 +118,7 @@ export function LanguagePickerPopover({
                   {opt.label}{" "}
                   <span className="text-xs text-gray-400">({opt.code})</span>
                 </span>
-                {value === opt.code && <span className="text-blue-600" aria-hidden="true">✓</span>}
+                {value === opt.code && <Check size={14} className="text-gray-900" aria-hidden="true" />}
               </button>
             ))}
             <div className="my-1 h-px bg-gray-100" />
@@ -139,7 +140,7 @@ export function LanguagePickerPopover({
                 <span className="text-xs font-normal text-gray-400">{autoSubtitle}</span>
               )}
             </span>
-            {value === null && <span className="text-blue-600" aria-hidden="true">✓</span>}
+            {value === null && <Check size={14} className="text-gray-900" aria-hidden="true" />}
           </button>
         )}
 
@@ -163,7 +164,7 @@ export function LanguagePickerPopover({
               {opt.label}{" "}
               <span className="text-xs text-gray-400">({opt.code})</span>
             </span>
-            {value === opt.code && <span className="text-blue-600" aria-hidden="true">✓</span>}
+            {value === opt.code && <Check size={14} className="text-gray-900" aria-hidden="true" />}
           </button>
         ))}
 
