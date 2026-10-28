@@ -1,126 +1,170 @@
 // Core Audio implementation for macOS system audio capture
+//
+// A global process tap (macOS 14.4+) wrapped in a private aggregate device.
+// The tap and aggregate are owned by a supervisor thread that:
+// - drains the real-time ring buffer and forwards chunks to the async stream,
+// - rebuilds the tap when the default output device changes or disappears,
+//   or when its sample rate changes (AirPods switching to the call profile),
+// - resamples to the rate the stream started at, so the pipeline never sees
+//   a rate change,
+// - flags a likely permission denial: other apps are playing audio but the
+//   tap delivers only silence (macOS hands a denied tap zeros, not an error).
+//
+// The IO proc itself only copies samples into a lock-free ring buffer.
+// This module is compiled only on macOS (see capture/mod.rs).
 
-#[cfg(target_os = "macos")]
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::{Arc, Mutex};
-use std::task::{Context, Poll, Waker};
+use std::task::{Context, Poll};
 use anyhow::Result;
 use futures_util::Stream;
+
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use futures_channel::mpsc;
 use ringbuf::{
     traits::{Consumer, Producer, Split},
     HeapCons, HeapProd, HeapRb,
 };
 use log::{error, info, warn};
 
-#[cfg(target_os = "macos")]
-use cidre::{arc, av, cat, cf, core_audio as ca, os};
+use cidre::{arc, av, cat, cf, core_audio as ca, ns, os};
 
-/// Waker state for async polling
-struct WakerState {
-    waker: Option<Waker>,
-    has_data: bool,
-}
+/// How long other apps must be playing, with the tap delivering only zeros,
+/// before we report that system audio is probably not permitted.
+const SILENCE_WHILE_PLAYING: Duration = Duration::from_secs(8);
 
 /// Core Audio speaker input using aggregate device + tap
-#[cfg(target_os = "macos")]
-pub struct CoreAudioCapture {
-    tap: ca::TapGuard,
-    agg_desc: arc::Retained<cf::DictionaryOf<cf::String, cf::Type>>,
-}
+pub struct CoreAudioCapture;
 
-/// Core Audio stream that produces audio samples
-#[cfg(target_os = "macos")]
+/// Mono f32 system audio at a fixed sample rate (the rate it started at)
 pub struct CoreAudioStream {
-    consumer: HeapCons<f32>,
-    _device: ca::hardware::StartedDevice<ca::AggregateDevice>,
-    _ctx: Box<AudioContext>,
-    _tap: ca::TapGuard,
-    waker_state: Arc<Mutex<WakerState>>,
-    current_sample_rate: Arc<AtomicU32>,
+    rx: mpsc::UnboundedReceiver<Vec<f32>>,
+    chunk: Vec<f32>,
+    pos: usize,
+    sample_rate: u32,
+    stop: Arc<AtomicBool>,
 }
 
-/// Audio processing context
-#[cfg(target_os = "macos")]
-struct AudioContext {
-    format: arc::R<av::AudioFormat>,
+/// State shared with the real-time IO proc. Only lock-free operations here.
+struct IoContext {
     producer: HeapProd<f32>,
-    waker_state: Arc<Mutex<WakerState>>,
-    current_sample_rate: Arc<AtomicU32>,
-    consecutive_drops: Arc<AtomicU32>,
-    should_terminate: Arc<AtomicBool>,
+    callbacks: Arc<AtomicU64>,
+    overflows: Arc<AtomicU64>,
 }
 
-#[cfg(target_os = "macos")]
-impl CoreAudioCapture {
-    /// Create a new Core Audio capture for system audio
-    pub fn new() -> Result<Self> {
-        info!("🎙️ CoreAudio: Starting Core Audio capture initialization...");
+/// One running tap + aggregate device. Field order is drop order: the device
+/// is stopped and destroyed before the context it writes into is freed, and
+/// the tap goes last.
+struct TapSession {
+    device: ca::hardware::StartedDevice<ca::AggregateDevice>,
+    _ctx: Box<IoContext>,
+    _tap: ca::TapGuard,
+    consumer: HeapCons<f32>,
+    output_uid: String,
+    rate: u32,
+    callbacks: Arc<AtomicU64>,
+    overflows: Arc<AtomicU64>,
+}
 
-        // Note: Audio Capture permission (NSAudioCaptureUsageDescription) is required for macOS 14.4+
-        // The permission dialog is automatically triggered when creating the Core Audio tap.
-        // If permission is denied, the tap will return silence (all zeros).
+extern "C" fn io_proc(
+    _device: ca::Device,
+    _now: &cat::AudioTimeStamp,
+    input_data: &cat::AudioBufList<1>,
+    _input_time: &cat::AudioTimeStamp,
+    _output_data: &mut cat::AudioBufList<1>,
+    _output_time: &cat::AudioTimeStamp,
+    ctx: Option<&mut IoContext>,
+) -> os::Status {
+    let Some(ctx) = ctx else {
+        return os::Status::NO_ERR;
+    };
+    ctx.callbacks.fetch_add(1, Ordering::Relaxed);
 
-        // Get default output device
-        info!("🎙️ CoreAudio: Getting default output device...");
+    let buf = &input_data.buffers[0];
+    let count = buf.data_bytes_size as usize / std::mem::size_of::<f32>();
+    if count > 0 && !buf.data.is_null() {
+        // The tap format is checked to be mono f32 when the session starts.
+        let data = unsafe { std::slice::from_raw_parts(buf.data as *const f32, count) };
+        if ctx.producer.push_slice(data) < count {
+            ctx.overflows.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+    os::Status::NO_ERR
+}
+
+fn cf_to_string(s: &cf::String) -> String {
+    s.to_string()
+}
+
+/// Core Audio's object for this process, so the tap can leave our own sounds out
+fn own_process_exclusion() -> arc::R<ns::Array<ns::Number>> {
+    match ca::Process::with_pid(std::process::id() as i32) {
+        Ok(process) if process.0 .0 != 0 => {
+            ns::Array::from_slice_retained(&[ns::Number::with_u32(process.0 .0)])
+        }
+        _ => ns::Array::new(),
+    }
+}
+
+/// True when another process is sending audio to an output device
+fn other_process_is_playing() -> bool {
+    let own_pid = std::process::id() as i32;
+    ca::System::processes()
+        .map(|list| {
+            list.iter().any(|p| {
+                p.pid().map(|pid| pid != own_pid).unwrap_or(false)
+                    && p.is_running_output().unwrap_or(false)
+            })
+        })
+        .unwrap_or(false)
+}
+
+fn default_output_uid() -> Option<String> {
+    ca::System::default_output_device()
+        .ok()
+        .and_then(|d| d.uid().ok())
+        .map(|uid| cf_to_string(&uid))
+}
+
+impl TapSession {
+    fn start() -> Result<Self> {
         let output_device = ca::System::default_output_device()
-            .map_err(|e| {
-                error!("❌ CoreAudio: Failed to get default output device: {:?}", e);
-                anyhow::anyhow!("Failed to get default output device: {:?}", e)
-            })?;
+            .map_err(|e| anyhow::anyhow!("Failed to get default output device: {:?}", e))?;
+        let output_uid = output_device
+            .uid()
+            .map_err(|e| anyhow::anyhow!("Failed to get output device UID: {:?}", e))?;
+        let device_name = output_device
+            .name()
+            .map(|n| cf_to_string(&n))
+            .unwrap_or_else(|_| "Unknown".into());
 
-        info!("✅ CoreAudio: Got default output device");
-
-        let output_uid = output_device.uid()
-            .map_err(|e| {
-                error!("❌ CoreAudio: Failed to get device UID: {:?}", e);
-                anyhow::anyhow!("Failed to get device UID: {:?}", e)
-            })?;
-
-        // Get device name for better debugging
-        let device_name = output_device.name().unwrap_or_else(|_| cf::String::from_str("Unknown"));
-        info!("✅ CoreAudio: Default output device: '{}' (UID: {:?})", device_name, output_uid);
-
-        // IMPORTANT: We do NOT create a sub_device dictionary here
-        // When using a tap, the tap provides all the audio we need
-        // Including both the tap AND the device creates duplicate audio (echo issue)
-
-        // Create process tap with mono global tap, excluding no processes
-        // Note: Mono tap is more reliable for system audio capture on macOS
-        info!("🎙️ CoreAudio: Creating process tap (global mono tap)...");
-        let tap_desc = ca::TapDesc::with_mono_global_tap_excluding_processes(&cidre::ns::Array::new());
-        let tap = tap_desc.create_process_tap()
-            .map_err(|e| {
-                error!("❌ CoreAudio: Failed to create process tap: {:?}", e);
-                anyhow::anyhow!("Failed to create process tap: {:?}", e)
-            })?;
-
-        // Get tap information
-        let tap_uid = tap.uid().unwrap_or_else(|_| cf::Uuid::new().to_cf_string());
-        let tap_asbd = tap.asbd();
-
-        match tap_asbd {
-            Ok(asbd) => {
-                info!("✅ CoreAudio: Process tap created - UID: {:?}", tap_uid);
-                info!("📊 CoreAudio: Tap format - sample_rate: {} Hz, channels: {}",
-                      asbd.sample_rate, asbd.channels_per_frame);
-            }
-            Err(e) => {
-                warn!("⚠️ CoreAudio: Tap created but couldn't get format info: {:?}", e);
-            }
+        // Mono global tap of everything except this app. The tap alone is the
+        // aggregate's input; adding the output device too would double the audio.
+        let tap_desc = ca::TapDesc::with_mono_global_tap_excluding_processes(&own_process_exclusion());
+        let tap = tap_desc
+            .create_process_tap()
+            .map_err(|e| anyhow::anyhow!("Failed to create process tap: {:?}", e))?;
+        let tap_uid = tap
+            .uid()
+            .map_err(|e| anyhow::anyhow!("Failed to get tap UID: {:?}", e))?;
+        let asbd = tap
+            .asbd()
+            .map_err(|e| anyhow::anyhow!("Failed to get tap format: {:?}", e))?;
+        let format = av::AudioFormat::with_asbd(&asbd)
+            .ok_or_else(|| anyhow::anyhow!("Unsupported tap format"))?;
+        if format.common_format() != av::audio::CommonFormat::PcmF32 || asbd.channels_per_frame != 1 {
+            anyhow::bail!(
+                "Unexpected tap format: {:?}, {} channels",
+                format.common_format(),
+                asbd.channels_per_frame
+            );
         }
 
-        // Create sub-tap dictionary
         let sub_tap = cf::DictionaryOf::with_keys_values(
             &[ca::sub_device_keys::uid()],
-            &[tap.uid().unwrap().as_type_ref()],
+            &[tap_uid.as_type_ref()],
         );
-
-        // Create aggregate device descriptor
-        // CRITICAL FIX: Use ONLY the tap, NOT the output device + tap
-        // Previous configuration included both sub_device_list (output device) and tap_list (tap of same device)
-        // This caused duplicate audio capture, resulting in echo (YouTube audio appeared twice)
-        // The tap alone provides all the system audio we need
         let agg_desc = cf::DictionaryOf::with_keys_values(
             &[
                 ca::aggregate_device_keys::is_private(),
@@ -129,301 +173,323 @@ impl CoreAudioCapture {
                 ca::aggregate_device_keys::name(),
                 ca::aggregate_device_keys::main_sub_device(),
                 ca::aggregate_device_keys::uid(),
-                // REMOVED: sub_device_list (was causing duplicate audio)
                 ca::aggregate_device_keys::tap_list(),
             ],
             &[
                 cf::Boolean::value_true().as_type_ref(),
                 cf::Boolean::value_false(),
                 cf::Boolean::value_true(),
-                cf::str!(c"meetily-audio-tap").as_type_ref(),
+                cf::str!(c"notesify-system-audio").as_type_ref(),
                 &output_uid,
                 &cf::Uuid::new().to_cf_string(),
-                // REMOVED: sub_device array (was causing echo)
                 &cf::ArrayOf::from_slice(&[sub_tap.as_ref()]),
             ],
         );
+        let agg_device = ca::AggregateDevice::with_desc(&agg_desc)
+            .map_err(|e| anyhow::anyhow!("Failed to create aggregate device: {:?}", e))?;
 
-        info!("✅ CoreAudio: Aggregate device descriptor created");
-        info!("✅ CoreAudio: Core Audio capture initialized successfully!");
-
-        Ok(Self { tap, agg_desc })
-    }
-
-    /// Start the audio device and create a stream
-    fn start_device(
-        &self,
-        ctx: &mut Box<AudioContext>,
-    ) -> Result<ca::hardware::StartedDevice<ca::AggregateDevice>> {
-        extern "C" fn audio_proc(
-            device: ca::Device,
-            _now: &cat::AudioTimeStamp,
-            input_data: &cat::AudioBufList<1>,
-            _input_time: &cat::AudioTimeStamp,
-            _output_data: &mut cat::AudioBufList<1>,
-            _output_time: &cat::AudioTimeStamp,
-            ctx: Option<&mut AudioContext>,
-        ) -> os::Status {
-            let ctx = ctx.unwrap();
-
-            // Check for sample rate changes
-            let after = device
-                .nominal_sample_rate()
-                .unwrap_or(ctx.format.absd().sample_rate) as u32;
-            let before = ctx.current_sample_rate.load(Ordering::Acquire);
-
-            if before != after {
-                ctx.current_sample_rate.store(after, Ordering::Release);
-            }
-
-            // Try to get audio data from the buffer list
-            if let Some(view) =
-                av::AudioPcmBuf::with_buf_list_no_copy(&ctx.format, input_data, None)
-            {
-                if let Some(data) = view.data_f32_at(0) {
-                    process_audio_data(ctx, data);
-                }
-            } else if ctx.format.common_format() == av::audio::CommonFormat::PcmF32 {
-                // Fallback: manual extraction if AudioPcmBuf fails
-                let first_buffer = &input_data.buffers[0];
-                let byte_count = first_buffer.data_bytes_size as usize;
-                let float_count = byte_count / std::mem::size_of::<f32>();
-
-                if float_count > 0 && first_buffer.data != std::ptr::null_mut() {
-                    let data = unsafe {
-                        std::slice::from_raw_parts(first_buffer.data as *const f32, float_count)
-                    };
-                    process_audio_data(ctx, data);
-                }
-            }
-
-            os::Status::NO_ERR
-        }
-
-        // Create aggregate device
-        info!("🎙️ CoreAudio: Creating aggregate device...");
-        let agg_device = ca::AggregateDevice::with_desc(&self.agg_desc)
-            .map_err(|e| {
-                error!("❌ CoreAudio: Failed to create aggregate device: {:?}", e);
-                anyhow::anyhow!("Failed to create aggregate device: {:?}", e)
-            })?;
-
-        info!("✅ CoreAudio: Aggregate device created");
-
-        // Create IO proc ID for audio processing
-        info!("🎙️ CoreAudio: Creating IO proc...");
-        let proc_id = agg_device.create_io_proc_id(audio_proc, Some(ctx))
-            .map_err(|e| {
-                error!("❌ CoreAudio: Failed to create IO proc: {:?}", e);
-                anyhow::anyhow!("Failed to create IO proc: {:?}", e)
-            })?;
-
-        info!("✅ CoreAudio: IO proc created with ID: {:?}", proc_id);
-
-        // Start the device
-        info!("🎙️ CoreAudio: Starting audio device...");
-        let started_device = ca::device_start(agg_device, Some(proc_id))
-            .map_err(|e| {
-                error!("❌ CoreAudio: Failed to start device: {:?}", e);
-                anyhow::anyhow!("Failed to start device: {:?}", e)
-            })?;
-
-        info!("✅ CoreAudio: Audio device started successfully!");
-
-        // Get device sample rate
-        let device_ref = started_device.as_ref();
-        let sample_rate = device_ref.nominal_sample_rate().unwrap_or(0.0);
-        info!("📊 CoreAudio: Aggregate device sample_rate: {} Hz", sample_rate);
-
-        Ok(started_device)
-    }
-
-    /// Create a stream from this capture
-    pub fn stream(self) -> Result<CoreAudioStream> {
-        info!("🎙️ CoreAudio: Creating CoreAudioStream...");
-
-        // Get tap audio format
-        let asbd = self.tap.asbd()
-            .map_err(|e| {
-                error!("❌ CoreAudio: Failed to get tap ASBD: {:?}", e);
-                anyhow::anyhow!("Failed to get tap ASBD: {:?}", e)
-            })?;
-
-        let format = av::AudioFormat::with_asbd(&asbd)
-            .ok_or_else(|| {
-                error!("❌ CoreAudio: Failed to create audio format");
-                anyhow::anyhow!("Failed to create audio format")
-            })?;
-
-        info!("✅ CoreAudio: Tap audio format: {} Hz, {} channels", asbd.sample_rate, asbd.channels_per_frame);
-
-        // Create ring buffer for lock-free audio transfer
-        let buffer_size = 1024 * 128; // 128KB buffer
-        let rb = HeapRb::<f32>::new(buffer_size);
-        let (producer, consumer) = rb.split();
-
-        let waker_state = Arc::new(Mutex::new(WakerState {
-            waker: None,
-            has_data: false,
-        }));
-
-        let current_sample_rate = Arc::new(AtomicU32::new(asbd.sample_rate as u32));
-        info!("✅ CoreAudio: Initial sample rate: {} Hz", asbd.sample_rate);
-
-        let mut ctx = Box::new(AudioContext {
-            format,
+        // ~2.7 s at 48 kHz; the supervisor drains it every 10 ms.
+        let (producer, consumer) = HeapRb::<f32>::new(1 << 17).split();
+        let callbacks = Arc::new(AtomicU64::new(0));
+        let overflows = Arc::new(AtomicU64::new(0));
+        let mut ctx = Box::new(IoContext {
             producer,
-            waker_state: waker_state.clone(),
-            current_sample_rate: current_sample_rate.clone(),
-            consecutive_drops: Arc::new(AtomicU32::new(0)),
-            should_terminate: Arc::new(AtomicBool::new(false)),
+            callbacks: callbacks.clone(),
+            overflows: overflows.clone(),
         });
 
-        info!("🎙️ CoreAudio: Starting audio device...");
-        let device = self.start_device(&mut ctx)?;
+        let proc_id = agg_device
+            .create_io_proc_id(io_proc, Some(&mut *ctx))
+            .map_err(|e| anyhow::anyhow!("Failed to create IO proc: {:?}", e))?;
+        let device = ca::device_start(agg_device, Some(proc_id))
+            .map_err(|e| anyhow::anyhow!("Failed to start aggregate device: {:?}", e))?;
 
-        info!("✅ CoreAudio: CoreAudioStream created successfully!");
+        let rate = device
+            .nominal_sample_rate()
+            .ok()
+            .filter(|r| *r > 0.0)
+            .unwrap_or(asbd.sample_rate) as u32;
+
+        info!(
+            "CoreAudio: tapping system audio on '{}' at {} Hz (mono)",
+            device_name, rate
+        );
+
+        Ok(Self {
+            device,
+            _ctx: ctx,
+            _tap: tap,
+            consumer,
+            output_uid: cf_to_string(&output_uid),
+            rate,
+            callbacks,
+            overflows,
+        })
+    }
+
+    /// Why this session should be rebuilt, if it should
+    fn needs_rebuild(&self) -> Option<String> {
+        match default_output_uid() {
+            Some(uid) if uid != self.output_uid => {
+                return Some(format!("default output changed to {}", uid));
+            }
+            _ => {}
+        }
+        if let Ok(dev) = ca::Device::with_uid(&cf::String::from_str(&self.output_uid)) {
+            let alive = dev
+                .bool_prop(&ca::PropSelector::DEVICE_IS_ALIVE.global_addr())
+                .unwrap_or(true);
+            if dev.0 .0 == 0 || !alive {
+                return Some("output device disappeared".into());
+            }
+        }
+        if let Ok(rate) = self.device.nominal_sample_rate() {
+            let rate = rate as u32;
+            if rate > 0 && rate != self.rate {
+                return Some(format!("sample rate changed {} -> {} Hz", self.rate, rate));
+            }
+        }
+        None
+    }
+}
+
+/// Linear interpolation from the device rate to the stream's fixed rate.
+/// Only used after a rate change; speech survives it fine for transcription.
+#[derive(Default)]
+struct LinearResampler {
+    pos: f64,
+    prev: Option<f32>,
+}
+
+impl LinearResampler {
+    fn reset(&mut self) {
+        *self = Self::default();
+    }
+
+    fn process(&mut self, input: &[f32], from: u32, to: u32, out: &mut Vec<f32>) {
+        if input.is_empty() {
+            return;
+        }
+        let step = from as f64 / to as f64;
+        let mut buf = Vec::with_capacity(input.len() + 1);
+        if let Some(p) = self.prev {
+            buf.push(p);
+        }
+        buf.extend_from_slice(input);
+        let last = (buf.len() - 1) as f64;
+        while self.pos < last {
+            let i = self.pos as usize;
+            let frac = (self.pos - i as f64) as f32;
+            out.push(buf[i] * (1.0 - frac) + buf[i + 1] * frac);
+            self.pos += step;
+        }
+        self.pos -= last;
+        self.prev = buf.last().copied();
+    }
+}
+
+/// Runs on its own thread for the lifetime of the stream
+fn supervise(
+    mut session: Option<TapSession>,
+    output_rate: u32,
+    tx: mpsc::UnboundedSender<Vec<f32>>,
+    stop: Arc<AtomicBool>,
+) {
+    let mut scratch = vec![0f32; 8192];
+    let mut resampler = LinearResampler::default();
+    let mut last_check = Instant::now();
+    let mut last_callbacks = 0u64;
+    let mut last_overflows = 0u64;
+    let mut last_nonzero = Instant::now();
+    let mut playing_since: Option<Instant> = None;
+    let mut reported_silence = false;
+    let mut retry_at = Instant::now();
+
+    while !stop.load(Ordering::Acquire) {
+        if let Some(s) = session.as_mut() {
+            loop {
+                let n = s.consumer.pop_slice(&mut scratch);
+                if n == 0 {
+                    break;
+                }
+                let chunk = &scratch[..n];
+                if chunk.iter().any(|v| v.abs() > 1e-7) {
+                    last_nonzero = Instant::now();
+                }
+                let out = if s.rate == output_rate {
+                    chunk.to_vec()
+                } else {
+                    let mut out = Vec::with_capacity(n * output_rate as usize / s.rate.max(1) as usize + 2);
+                    resampler.process(chunk, s.rate, output_rate, &mut out);
+                    out
+                };
+                if tx.unbounded_send(out).is_err() {
+                    return; // stream dropped
+                }
+            }
+        }
+
+        if last_check.elapsed() >= Duration::from_millis(500) {
+            last_check = Instant::now();
+            let mut rebuild = None;
+            if let Some(s) = session.as_ref() {
+                let overflows = s.overflows.load(Ordering::Relaxed);
+                if overflows > last_overflows {
+                    warn!("CoreAudio: system audio buffer overflowed {} time(s)", overflows - last_overflows);
+                    last_overflows = overflows;
+                }
+                let callbacks = s.callbacks.load(Ordering::Relaxed);
+                let io_running = callbacks != last_callbacks;
+                last_callbacks = callbacks;
+
+                // Other apps playing but nothing but zeros (or no IO at all)
+                // from the tap: macOS is most likely withholding system audio.
+                if other_process_is_playing() {
+                    let since = *playing_since.get_or_insert_with(Instant::now);
+                    if !reported_silence
+                        && since.elapsed() >= SILENCE_WHILE_PLAYING
+                        && last_nonzero < since
+                    {
+                        reported_silence = true;
+                        warn!(
+                            "CoreAudio: other apps are playing but the tap is silent (IO running: {}); system audio permission is probably denied",
+                            io_running
+                        );
+                        crate::audio::permissions::notify_system_audio_silent();
+                    }
+                } else {
+                    playing_since = None;
+                }
+
+                rebuild = s.needs_rebuild();
+            }
+            if let Some(reason) = rebuild {
+                info!("CoreAudio: rebuilding system audio tap ({})", reason);
+                session = None; // tear down before building the next one
+                resampler.reset();
+                retry_at = Instant::now();
+            }
+        }
+
+        if session.is_none() && Instant::now() >= retry_at {
+            match TapSession::start() {
+                Ok(s) => {
+                    last_callbacks = 0;
+                    last_overflows = 0;
+                    session = Some(s);
+                }
+                Err(e) => {
+                    warn!("CoreAudio: could not restart system audio tap, retrying: {}", e);
+                    retry_at = Instant::now() + Duration::from_secs(1);
+                }
+            }
+        }
+
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    info!("CoreAudio: system audio capture stopped");
+}
+
+impl CoreAudioCapture {
+    /// Create a new Core Audio capture for system audio
+    pub fn new() -> Result<Self> {
+        Ok(Self)
+    }
+
+    /// Start the tap on its supervisor thread and return the sample stream.
+    /// Fails if the first tap cannot be created.
+    pub fn stream(self) -> Result<CoreAudioStream> {
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel::<Result<u32>>();
+        let (tx, rx) = mpsc::unbounded::<Vec<f32>>();
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_thread = stop.clone();
+
+        std::thread::Builder::new()
+            .name("notesify-system-audio".into())
+            .spawn(move || match TapSession::start() {
+                Ok(session) => {
+                    let rate = session.rate;
+                    let _ = ready_tx.send(Ok(rate));
+                    supervise(Some(session), rate, tx, stop_thread);
+                }
+                Err(e) => {
+                    let _ = ready_tx.send(Err(e));
+                }
+            })
+            .map_err(|e| anyhow::anyhow!("Failed to start system audio thread: {}", e))?;
+
+        let sample_rate = ready_rx
+            .recv_timeout(Duration::from_secs(10))
+            .map_err(|_| anyhow::anyhow!("System audio tap did not start in time"))?
+            .map_err(|e| {
+                error!("CoreAudio: {}", e);
+                e
+            })?;
 
         Ok(CoreAudioStream {
-            consumer,
-            _device: device,
-            _ctx: ctx,
-            _tap: self.tap,
-            waker_state,
-            current_sample_rate,
+            rx,
+            chunk: Vec::new(),
+            pos: 0,
+            sample_rate,
+            stop,
         })
     }
 }
 
-/// Process audio data from the IO proc callback
-#[cfg(target_os = "macos")]
-fn process_audio_data(ctx: &mut AudioContext, data: &[f32]) {
-    // Push raw samples directly to ring buffer
-    // Let the pipeline handle all gain adjustments (post-mix 3x gain + mic normalization)
-    let buffer_size = data.len();
-    let pushed = ctx.producer.push_slice(data);
-
-    if pushed < buffer_size {
-        let consecutive = ctx.consecutive_drops.fetch_add(1, Ordering::AcqRel) + 1;
-
-        if consecutive > 10 {
-            ctx.should_terminate.store(true, Ordering::Release);
-            return;
-        }
-    } else {
-        ctx.consecutive_drops.store(0, Ordering::Release);
-    }
-
-    if pushed > 0 {
-        let should_wake = {
-            let mut waker_state = ctx.waker_state.lock().unwrap();
-            if !waker_state.has_data {
-                waker_state.has_data = true;
-                waker_state.waker.take()
-            } else {
-                None
-            }
-        };
-
-        if let Some(waker) = should_wake {
-            waker.wake();
-        }
-    }
-}
-
-#[cfg(target_os = "macos")]
 impl CoreAudioStream {
-    /// Get current sample rate
+    /// Sample rate of every sample this stream yields (fixed for its lifetime)
     pub fn sample_rate(&self) -> u32 {
-        self.current_sample_rate.load(Ordering::Acquire)
+        self.sample_rate
     }
 }
 
-#[cfg(target_os = "macos")]
 impl Stream for CoreAudioStream {
     type Item = f32;
 
-    fn poll_next(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Option<Self::Item>> {
-        // Try to pop a sample from the ring buffer
-        if let Some(sample) = self.consumer.try_pop() {
-            return Poll::Ready(Some(sample));
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        loop {
+            if self.pos < self.chunk.len() {
+                let sample = self.chunk[self.pos];
+                self.pos += 1;
+                return Poll::Ready(Some(sample));
+            }
+            match Pin::new(&mut self.rx).poll_next(cx) {
+                Poll::Ready(Some(chunk)) => {
+                    self.chunk = chunk;
+                    self.pos = 0;
+                }
+                Poll::Ready(None) => return Poll::Ready(None),
+                Poll::Pending => return Poll::Pending,
+            }
         }
-
-        // Check if we should terminate
-        if self._ctx.should_terminate.load(Ordering::Acquire) {
-            warn!("Stream terminating due to buffer pressure");
-            return match self.consumer.try_pop() {
-                Some(sample) => Poll::Ready(Some(sample)),
-                None => Poll::Ready(None),
-            };
-        }
-
-        // No data available, register waker and return pending
-        {
-            let mut state = self.waker_state.lock().unwrap();
-            state.has_data = false;
-            state.waker = Some(cx.waker().clone());
-        }
-
-        Poll::Pending
     }
 }
 
-#[cfg(target_os = "macos")]
 impl Drop for CoreAudioStream {
     fn drop(&mut self) {
-        info!("CoreAudioStream dropped, signaling termination");
-        self._ctx.should_terminate.store(true, Ordering::Release);
-    }
-}
-
-// Stub implementations for non-macOS platforms
-#[cfg(not(target_os = "macos"))]
-pub struct CoreAudioCapture;
-
-#[cfg(not(target_os = "macos"))]
-pub struct CoreAudioStream;
-
-#[cfg(not(target_os = "macos"))]
-impl CoreAudioCapture {
-    pub fn new() -> Result<Self> {
-        Err(anyhow::anyhow!("Core Audio is only supported on macOS"))
-    }
-
-    pub fn stream(self) -> Result<CoreAudioStream> {
-        Err(anyhow::anyhow!("Core Audio is only supported on macOS"))
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
-impl CoreAudioStream {
-    pub fn sample_rate(&self) -> u32 {
-        0
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
-impl Stream for CoreAudioStream {
-    type Item = f32;
-
-    fn poll_next(
-        self: Pin<&mut Self>,
-        _cx: &mut Context<'_>,
-    ) -> Poll<Option<Self::Item>> {
-        Poll::Ready(None)
+        // The supervisor tears the tap down within ~10 ms
+        self.stop.store(true, Ordering::Release);
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+        use super::*;
+
+        #[test]
+    fn resampler_keeps_duration() {
+        let mut r = LinearResampler::default();
+        let mut out = Vec::new();
+        // 1 s of 24 kHz in 10 ms chunks -> about 1 s of 48 kHz
+        for _ in 0..100 {
+            r.process(&[0.5; 240], 24_000, 48_000, &mut out);
+        }
+        assert!((out.len() as i64 - 48_000).abs() <= 2, "{}", out.len());
+        assert!(out.iter().all(|v| (*v - 0.5).abs() < 1e-6));
+    }
 
     #[tokio::test]
-    #[cfg(target_os = "macos")]
-    #[ignore] // Only run manually as it requires audio hardware
+        #[ignore] // Only run manually as it requires audio hardware
     async fn test_core_audio_capture() {
         use futures_util::StreamExt;
 
@@ -432,15 +498,12 @@ mod tests {
 
         info!("Stream sample rate: {} Hz", stream.sample_rate());
 
-        // Collect some samples
         let mut sample_count = 0;
-        while sample_count < 48000 { // 1 second at 48kHz
+        while sample_count < 48000 {
             if let Some(_sample) = stream.next().await {
                 sample_count += 1;
             }
         }
-
-        info!("Collected {} samples", sample_count);
         assert!(sample_count >= 48000);
     }
 }

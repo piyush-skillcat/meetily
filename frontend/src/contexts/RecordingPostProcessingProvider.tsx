@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect } from 'react';
-import { listen } from '@tauri-apps/api/event';
+import { emit, listen } from '@tauri-apps/api/event';
 import { useRecordingStop } from '@/hooks/useRecordingStop';
 
 /**
@@ -38,7 +38,12 @@ export function RecordingPostProcessingProvider({ children }: { children: React.
 
           // Call the post-processing handler
           // event.payload is the callApi boolean (true for normal stops)
-          handleRecordingStop(event.payload);
+          // Then tell the backend the meeting is saved (quitting waits for this on macOS)
+          Promise.resolve(handleRecordingStop(event.payload))
+            .catch((error) => console.error('[RecordingPostProcessing] Post-processing failed:', error))
+            .finally(() => {
+              emit('recording-post-processing-done').catch(() => {});
+            });
         });
 
         console.log('[RecordingPostProcessing] Event listener set up successfully');

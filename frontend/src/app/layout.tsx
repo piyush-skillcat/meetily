@@ -24,6 +24,7 @@ import { DownloadProgressToastProvider } from '@/components/shared/DownloadProgr
 import { UpdateCheckProvider } from '@/components/UpdateCheckProvider'
 import { RecordingPostProcessingProvider } from '@/contexts/RecordingPostProcessingProvider'
 import { MeetingDetectionProvider } from '@/contexts/MeetingDetectionProvider'
+import { SystemAudioSilenceNotice } from '@/components/SystemAudioSilenceNotice'
 import { ImportAudioDialog, ImportDropOverlay } from '@/components/ImportAudio'
 import { ImportDialogProvider } from '@/contexts/ImportDialogContext'
 import { isAudioExtension, getAudioFormatsDisplayList } from '@/constants/audioFormats'
@@ -267,6 +268,7 @@ export default function RootLayout({
                               {/* Download progress toast provider - listens for background downloads */}
                               <DownloadProgressToastProvider />
                               <MeetingDetectionProvider />
+                              <SystemAudioSilenceNotice />
 
                               {/* Show onboarding or main app */}
                               {showOnboarding ? (

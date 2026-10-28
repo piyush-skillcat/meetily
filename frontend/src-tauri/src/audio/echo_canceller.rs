@@ -10,10 +10,11 @@
 // whole mic windows, this keeps the user's own voice when both sides talk at
 // once.
 //
-// Linux only (links the system webrtc-audio-processing-2 library); elsewhere
+// Linux links the system webrtc-audio-processing-2 library; macOS builds the
+// same library from source (the crate's `bundled` feature). Elsewhere
 // `EchoCanceller::new` returns None and callers keep their previous behaviour.
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 mod imp {
     use log::{info, warn};
     use webrtc_audio_processing::config::{Config, EchoCanceller as Aec, HighPassFilter};
@@ -90,7 +91,7 @@ mod imp {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 mod imp {
     pub struct EchoCanceller;
 
@@ -107,7 +108,7 @@ mod imp {
 
 pub use imp::EchoCanceller;
 
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
 mod tests {
     use super::*;
 

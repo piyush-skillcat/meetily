@@ -56,6 +56,15 @@ export class UpdateService {
       }
     }
 
+    // The macOS build has its own bundle ID and no update feed of its own yet
+    // (tauri.macos.conf.json), so never ask upstream's feed for an update.
+    if (typeof navigator !== 'undefined' && navigator.userAgent.includes('Mac')) {
+      return {
+        available: false,
+        currentVersion: await getVersion(),
+      };
+    }
+
     this.updateCheckInProgress = true;
     this.lastCheckTime = Date.now();
 

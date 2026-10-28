@@ -20,6 +20,16 @@ export function usePermissionCheck() {
     setStatus(prev => ({ ...prev, isChecking: true, error: null }));
 
     try {
+      // macOS: devices are listed even when access is denied, so ask the OS.
+      // Undecided counts as fine; macOS prompts when recording starts.
+      if (typeof navigator !== 'undefined' && navigator.userAgent.includes('Mac')) {
+        const permissions = await invoke<{ microphone: string; systemAudio: string }>('get_audio_permissions');
+        const hasMicrophone = permissions.microphone !== 'denied';
+        const hasSystemAudio = permissions.systemAudio !== 'denied';
+        setStatus({ hasMicrophone, hasSystemAudio, isChecking: false, error: null });
+        return { hasMicrophone, hasSystemAudio };
+      }
+
       // Get audio devices to check for microphone and system audio availability
       const devices = await invoke<Array<{ name: string; device_type: 'Input' | 'Output' }>>('get_audio_devices');
 

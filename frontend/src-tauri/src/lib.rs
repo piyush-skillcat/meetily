@@ -52,6 +52,8 @@ pub mod parakeet_engine;
 pub mod state;
 pub mod summary;
 pub mod tray;
+#[cfg(target_os = "macos")]
+pub mod quit_guard;
 pub mod utils;
 pub mod whisper_engine;
 
@@ -290,6 +292,16 @@ async fn get_audio_devices() -> Result<Vec<AudioDevice>, String> {
 
 #[tauri::command]
 async fn trigger_microphone_permission() -> Result<bool, String> {
+    // macOS hands a denied microphone silence rather than an error, so ask
+    // AVFoundation for the real status (and show its prompt if undecided).
+    #[cfg(target_os = "macos")]
+    {
+        return tokio::task::spawn_blocking(audio::permissions::request_microphone_permission)
+            .await
+            .map(|state| state == audio::permissions::PermissionState::Authorized)
+            .map_err(|e| format!("Failed to trigger microphone permission: {}", e));
+    }
+    #[cfg(not(target_os = "macos"))]
     trigger_audio_permission()
         .map_err(|e| format!("Failed to trigger microphone permission: {}", e))
 }
@@ -433,6 +445,14 @@ pub fn run() {
             // Initialize system tray
             if let Err(e) = tray::create_tray(_app.handle()) {
                 log::error!("Failed to create system tray: {}", e);
+            }
+
+            #[cfg(target_os = "macos")]
+            {
+                audio::permissions::set_app_handle(_app.handle().clone());
+                if let Err(e) = quit_guard::install_app_menu(_app.handle()) {
+                    log::error!("Failed to install app menu: {}", e);
+                }
             }
 
             // Granola-style "a meeting started" nudge (Linux: watches mic capture streams)
@@ -749,6 +769,7 @@ pub fn run() {
             audio::permissions::check_screen_recording_permission_command,
             audio::permissions::request_screen_recording_permission_command,
             audio::permissions::trigger_system_audio_permission_command,
+            audio::permissions::get_audio_permissions,
             // Database import commands
             database::commands::check_first_launch,
             database::commands::select_legacy_database_path,
@@ -788,7 +809,16 @@ pub fn run() {
                 tauri::RunEvent::Reopen { .. } => {
                     tray::focus_main_window(_app_handle);
                 }
+                #[cfg(target_os = "macos")]
+                tauri::RunEvent::ExitRequested { api, .. } => {
+                    // Save a running recording before quitting (quit_guard.rs)
+                    if quit_guard::should_hold_exit(_app_handle) {
+                        api.prevent_exit();
+                    }
+                }
                 tauri::RunEvent::Exit => {
+                    #[cfg(target_os = "macos")]
+                    quit_guard::stop_recording_on_exit(_app_handle);
                     log::info!("Application exiting, cleaning up resources...");
                     tauri::async_runtime::block_on(async {
                         // Clean up database connection and checkpoint WAL

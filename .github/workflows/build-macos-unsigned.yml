@@ -18,6 +18,9 @@ env:
   # Homebrew OpenSSL, and linking it would tie the app to Homebrew anyway.
   # The sidecar only runs local models, so build it without HTTPS.
   CMAKE_DISABLE_FIND_PACKAGE_OpenSSL: "ON"
+  # Matches bundle.macOS.minimumSystemVersion (tauri.macos.conf.json): the
+  # system audio tap needs macOS 14.4, so compile C/C++ deps for it too.
+  MACOSX_DEPLOYMENT_TARGET: "14.4"
 
 jobs:
   build:
@@ -46,6 +49,10 @@ jobs:
           workspaces: ". -> target"
           key: macos-unsigned-aarch64
 
+      - name: Install build tools
+        # meson + ninja build WebRTC's echo canceller from source (bundled feature)
+        run: brew install meson ninja
+
       - name: Install frontend dependencies
         working-directory: frontend
         # The lockfile lags package.json "overrides", so it cannot be frozen
@@ -59,16 +66,32 @@ jobs:
 
       - name: Build app and DMG
         working-directory: frontend
-        # No updater key here, so skip the signed updater archive.
-        # signingIdentity "-" in tauri.conf.json ad-hoc signs the bundle.
-        run: >
-          pnpm tauri build --target aarch64-apple-darwin --bundles app,dmg
-          --config '{"bundle":{"createUpdaterArtifacts":false}}'
+        # tauri.macos.conf.json sets the bundle ID, minimum macOS and turns
+        # off updater archives. signingIdentity "-" ad-hoc signs the bundle.
+        run: pnpm tauri build --target aarch64-apple-darwin --bundles app,dmg
 
-      - name: List bundle
-        run: find target/aarch64-apple-darwin/release/bundle -maxdepth 2
+      - name: Check the bundle
+        run: |
+          APP=$(find target/aarch64-apple-darwin/release/bundle/macos -maxdepth 1 -name '*.app' | head -1)
+          PLIST="$APP/Contents/Info.plist"
+          echo "Bundle ID: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$PLIST")"
+          echo "Minimum macOS: $(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$PLIST")"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
+          # Every executable may link only system libraries (no Homebrew dylibs)
+          status=0
+          for bin in "$APP"/Contents/MacOS/*; do
+            echo "== $(basename "$bin") (minos $(otool -l "$bin" | awk '/minos/ {print $2; exit}'))"
+            others=$(otool -L "$bin" | tail -n +2 | awk '{print $1}' | grep -vE '^(/System/|/usr/lib/|@rpath/|@executable_path/|@loader_path/)' || true)
+            if [ -n "$others" ]; then
+              echo "::error::$(basename "$bin") links non-system libraries: $others"
+              status=1
+            fi
+          done
+          exit $status
 
       - uses: actions/upload-artifact@v4
+        if: always() # keep the DMG even when the bundle check flags something
         with:
           name: notesify-macos-aarch64-${{ github.sha }}
           path: target/aarch64-apple-darwin/release/bundle/dmg/*.dmg

@@ -173,6 +173,8 @@ core-graphics = "0.23"
 cidre = { git = "https://github.com/yury/cidre", rev = "a9587fa", features = ["av"] }
 dasp = "0.11.0"
 futures-channel = "0.3.31"
+# WebRTC AEC3 echo cancellation, built from source (needs meson + ninja)
+webrtc-audio-processing = { version = "2.1.0", features = ["bundled"] }
 
 # PERFORMANCE: Enable Metal GPU + CoreML acceleration automatically on macOS
 # CoreML provides additional acceleration for Apple Silicon chips
